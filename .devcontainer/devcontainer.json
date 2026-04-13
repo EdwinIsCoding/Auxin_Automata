@@ -1,0 +1,53 @@
+{
+  "name": "Auxin Automata Dev",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "stable",
+      "profile": "default"
+    }
+  },
+  "onCreateCommand": "bash .devcontainer/install-tools.sh",
+  "postCreateCommand": "make bootstrap",
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:${containerEnv:HOME}/.local/share/solana/install/active_release/bin:${containerEnv:HOME}/.cargo/bin"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python3.11",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
+      },
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
+  "forwardPorts": [3000, 8765, 8766, 8767, 9090],
+  "portsAttributes": {
+    "3000": { "label": "Dashboard" },
+    "8765": { "label": "Twin WS (PyBullet frames)" },
+    "8766": { "label": "Bridge WS (live telemetry)" },
+    "8767": { "label": "Bridge /healthz" },
+    "9090": { "label": "Prometheus metrics" }
+  }
+}
