@@ -1,0 +1,83 @@
+\documentclass[10pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+% Margins adjusted to allow content to fill the page beautifully
+\geometry{a4paper, margin=0.55in} 
+
+% --- FONT OPTIONS ---
+% Uncomment the ONE you want to use. Lato is currently active.
+\usepackage[default]{lato} % Option 1: Lato (Sleek, geometric, modern)
+%\usepackage[sfdefault]{roboto} % Option 2: Roboto (Clean, highly legible tech standard)
+%\usepackage[sfdefault]{FiraSans} % Option 3: Fira Sans (Slightly wider, distinctive startup vibe)
+%\usepackage{helvet} \renewcommand{\familydefault}{\sfdefault} % Option 4: Helvetica (The original)
+
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{parskip}
+
+% Tighten global spacing
+\setlength{\parskip}{0.1em}
+\pagenumbering{gobble}
+
+% Custom Colors
+\definecolor{solanagreen}{RGB}{20, 241, 149}
+\definecolor{solanapurple}{RGB}{153, 69, 255}
+\definecolor{darkgray}{RGB}{70, 70, 70}
+
+% Formatting
+\titleformat{\section}{\large\bfseries\color{solanapurple}}{}{0em}{}[\titlerule]
+\setlist[itemize]{leftmargin=*, itemsep=4pt, parsep=0pt, topsep=4pt}
+
+\begin{document}
+
+% Header
+\begin{center}
+    {\LARGE \textbf{\color{solanapurple}The Agentic Infrastructure API for Autonomous Hardware}} \\[0.3cm]
+    {\normalsize \textit{\color{darkgray}Bridging High-Frequency Telemetry, Solana M2M Micropayments, and Immutable Compliance.}} \\[0.4cm]
+    {\small \textbf{Edwin Redhead} \quad | \quad \textbf{Tara Kasayapanand}}
+\end{center}
+
+% Executive Summary
+\section*{1) Executive Overview}
+The proposed platform is an AI-native middleware designed to integrate physical infrastructure into the Agentic Economy. We are building the toolkit that allows any hardware entity, from robotic arms to autonomous drones and DePIN networks, to act as a financially sovereign and legally compliant agent. By leveraging the Solana Virtual Machine (SVM), the system enables hardware to hold its own wallet, autonomously stream micro-transactions for real-time cloud computing and AI inferences, and hash critical safety telemetry immutably to the blockchain.
+
+
+% Core Architecture
+\section*{2) Core Architecture}
+The architecture operates at the intersection of robotics, AI agents, and high-performance blockchains, utilising three core pillars:
+\begin{itemize}
+    \item \textbf{Autonomous Hardware Wallets:} A lightweight SDK deployed on edge-compute devices (e.g., NVIDIA Jetson). It assigns a unique Solana wallet to physical hardware, enabling the machine to custody funds and autonomously sign transactions based on real-time operational needs.
+    \item \textbf{The M2M Payment Engine:} Utilising Solana's sub-second finality and localised fee markets, the payment engine executes high-frequency micropayments. When the hardware requires external compute or AI inference (e.g., multimodal reasoning via Google Gemini, TTS via ElevenLabs), the agent streams fractions of a cent continuously without network congestion.
+    \item \textbf{Immutable Compliance Oracle:} For highly regulated environments, the system functions as a cryptographic audit trail. Kinematic telemetry (axes, torque, velocity) and heuristic safety checks are hashed directly to the chain. If safety thresholds are breached, the exact state of the hardware is permanently secured, satisfying human-in-the-loop regulatory requirements.
+\end{itemize}
+
+
+% Colosseum Hackathon Scope
+\section*{3) Colosseum Hackathon Objective (MVP Scope)}
+During the 5-week Colosseum sprint, our objective is to demonstrate the core middleware through a live, highly visual physical proxy. We are moving beyond simulation to prove real-world viability.
+
+\textbf{The Deliverable:} A desktop-class, ROS-compatible robotic arm integrated with local edge-compute, operating completely autonomously.
+\begin{itemize}
+    \item \textbf{Demonstrated Action 1 (The M2M Economy):} The physical robot will dynamically assess its environment using sensors, autonomously decide it requires heavy AI processing, and sign a live Solana transaction to pay for an external LLM API call.
+    \item \textbf{Demonstrated Action 2 (The Compliance Log):} As the robot moves, its precise kinematic state will be continuously monitored. We will simulate an anomaly, triggering an automatic system halt, with the exact telemetry variables hashed to the Solana devnet/mainnet in real-time.
+    \item \textbf{The Dashboard:} A front-end application visualising the robot's digital twin, a live ticker of the M2M Solana micropayments, and the immutable compliance ledger.
+\end{itemize}
+
+
+% Technical Stack
+\section*{4) Technical Stack}
+\begin{itemize}
+    \item \textbf{Blockchain Infrastructure:} Solana SVM, Rust (Anchor framework), Helius/QuickNode RPCs for guaranteed low-latency transaction broadcasting.
+    \item \textbf{Hardware \& Edge Compute:} Robotic Arm (e.g., xArm/Franka Emika/myCobot), NVIDIA Jetson Orin Nano, ROS2 (Robot Operating System).
+    \item \textbf{AI \& Middleware:} Python-based kinematic-to-Web3 bridging, Google Gemini (Multimodal reasoning), Next.js (Data visualisation dashboard).
+\end{itemize}
+
+% The Vision
+\section*{5) The Scalable Vision}
+While initially conceptualised for surgical robotics, this architecture is fundamentally hardware-agnostic. Our venture-scale goal is to become the underlying financial and compliance rail for the impending explosion of DePIN and agentic machines. Whether it is an autonomous drone paying for spatial mapping compute, or an industrial robot logging safety data for insurance purposes, we provide the API that connects physical machines to the Solana network.
+
+\end{document}
