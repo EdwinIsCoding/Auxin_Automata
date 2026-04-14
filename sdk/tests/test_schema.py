@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
 
 from auxin_sdk.schema import TelemetryFrame
 
-
 # ── Valid construction ────────────────────────────────────────────────────────
+
 
 def test_canonical_frame_is_valid(canonical_frame: TelemetryFrame) -> None:
     """The canonical fixture validates without errors and has correct field counts."""
@@ -29,7 +29,7 @@ def test_anomalous_frame_carries_flag(anomalous_frame: TelemetryFrame) -> None:
 def test_minimal_valid_frame() -> None:
     """A frame with one joint and no anomalies is valid."""
     frame = TelemetryFrame(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         joint_positions=[0.0],
         joint_velocities=[0.0],
         joint_torques=[0.0],
@@ -40,6 +40,7 @@ def test_minimal_valid_frame() -> None:
 
 
 # ── JSON round-trip ───────────────────────────────────────────────────────────
+
 
 def test_json_round_trip_preserves_all_fields(canonical_frame: TelemetryFrame) -> None:
     """model_dump(mode='json') → model_validate recovers the original frame."""
@@ -67,11 +68,12 @@ def test_model_dump_json_is_string(canonical_frame: TelemetryFrame) -> None:
 
 # ── Validation errors ─────────────────────────────────────────────────────────
 
+
 def test_empty_joint_positions_rejected() -> None:
     """Empty joint_positions must raise ValidationError."""
     with pytest.raises(ValidationError, match="must not be empty"):
         TelemetryFrame(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             joint_positions=[],
             joint_velocities=[0.0],
             joint_torques=[0.0],
@@ -83,7 +85,7 @@ def test_empty_joint_positions_rejected() -> None:
 def test_empty_joint_velocities_rejected() -> None:
     with pytest.raises(ValidationError, match="must not be empty"):
         TelemetryFrame(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             joint_positions=[0.0],
             joint_velocities=[],
             joint_torques=[0.0],
@@ -95,7 +97,7 @@ def test_empty_joint_velocities_rejected() -> None:
 def test_empty_joint_torques_rejected() -> None:
     with pytest.raises(ValidationError, match="must not be empty"):
         TelemetryFrame(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             joint_positions=[0.0],
             joint_velocities=[0.0],
             joint_torques=[],

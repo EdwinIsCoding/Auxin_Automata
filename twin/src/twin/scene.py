@@ -15,7 +15,6 @@ Design notes
 from __future__ import annotations
 
 import io
-from pathlib import Path
 
 import numpy as np
 import pybullet
@@ -24,8 +23,8 @@ from PIL import Image  # pillow — installed as a transitive dep of imageio
 
 # ── Robot constants ───────────────────────────────────────────────────────────
 
-NUM_ARM_JOINTS: int = 7          # joints 0-6 (panda_joint1 … panda_joint7)
-EEF_LINK: int = 11               # panda_hand
+NUM_ARM_JOINTS: int = 7  # joints 0-6 (panda_joint1 … panda_joint7)
+EEF_LINK: int = 11  # panda_hand
 _FINGER_JOINTS: list[int] = [9, 10]  # kept at 0 (closed)
 
 # Franka Panda "ready" pose (radians) — visually neutral, away from singularities
@@ -94,7 +93,9 @@ class RobotScene:
         obs_vis = p.createVisualShape(
             p.GEOM_BOX, halfExtents=obs_half, rgbaColor=[0.90, 0.10, 0.10, 0.90], physicsClientId=c
         )
-        p.createMultiBody(0, obs_col, obs_vis, [0.50, 0.18, 0.77], physicsClientId=c)
+        self._obstacle: int = p.createMultiBody(
+            0, obs_col, obs_vis, [0.50, 0.18, 0.77], physicsClientId=c
+        )
 
         # Reset arm to home pose; close fingers
         for i, angle in enumerate(_HOME_JOINTS):
@@ -110,6 +111,29 @@ class RobotScene:
 
     def step(self) -> None:
         """Advance the simulation by one timestep (1 / sim_rate_hz seconds)."""
+        pybullet.stepSimulation(physicsClientId=self._client)
+
+    # ── Collision detection ───────────────────────────────────────────────────
+
+    def has_collision(self) -> bool:
+        """Return True if any robot link is currently in contact with the obstacle."""
+        contacts = pybullet.getContactPoints(
+            bodyA=self._robot,
+            bodyB=self._obstacle,
+            physicsClientId=self._client,
+        )
+        return len(contacts) > 0
+
+    def teleport_obstacle_to_eef(self) -> None:
+        """Move the obstacle directly to the end-effector position to force a collision."""
+        eef = self.eef_pose()
+        pybullet.resetBasePositionAndOrientation(
+            self._obstacle,
+            [eef["x"], eef["y"], eef["z"]],
+            [0, 0, 0, 1],
+            physicsClientId=self._client,
+        )
+        # One physics step so contacts are registered
         pybullet.stepSimulation(physicsClientId=self._client)
 
     # ── Joint state readout ───────────────────────────────────────────────────
@@ -215,6 +239,7 @@ class RobotScene:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _encode_jpeg(rgb: np.ndarray, quality: int = 85) -> bytes:
     """Encode an (H, W, 3) uint8 numpy array as JPEG bytes via Pillow."""

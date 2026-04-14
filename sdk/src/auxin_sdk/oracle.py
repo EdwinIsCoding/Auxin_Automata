@@ -129,9 +129,7 @@ class SafetyOracle:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    async def check(
-        self, frame: TelemetryFrame, image_path: Path
-    ) -> OracleDecision:
+    async def check(self, frame: TelemetryFrame, image_path: Path) -> OracleDecision:
         """
         Evaluate whether the next action is safe.
 
@@ -325,9 +323,7 @@ def _local_fallback_core(
     # Torque check
     max_torque = max(frame.joint_torques)
     if max_torque > threshold:
-        reasons.append(
-            f"torque {max_torque:.1f} N·m exceeds threshold {threshold:.1f} N·m"
-        )
+        reasons.append(f"torque {max_torque:.1f} N·m exceeds threshold {threshold:.1f} N·m")
 
     # Anomaly flags
     if frame.anomaly_flags:
@@ -338,9 +334,7 @@ def _local_fallback_core(
     labels_file = image_path.parent / "labels.json"
     if labels_file.exists():
         try:
-            labels: dict[str, str] = json.loads(
-                labels_file.read_text(encoding="utf-8")
-            )
+            labels: dict[str, str] = json.loads(labels_file.read_text(encoding="utf-8"))
             label = labels.get(image_path.name)
             if label == "obstacle":
                 reasons.append("obstacle label in workspace image (local fallback)")

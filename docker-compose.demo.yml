@@ -1,0 +1,124 @@
+version: "3.9"
+
+# ── Auxin Automata — full twin-mode demo stack ────────────────────────────────
+#
+#  make demo        → builds + starts everything, prints dashboard URL
+#
+#  Services:
+#   twin       : PyBullet JPEG frame server            ws://localhost:8765
+#   bridge     : SDK bridge (AUXIN_SOURCE=twin)        ws://localhost:8766
+#                                                      http://localhost:8767/healthz
+#                                                      http://localhost:9090/metrics
+#   dashboard  : Next.js UI                            http://localhost:3000
+#   prometheus : Metrics scraper                       http://localhost:9091
+#   grafana    : Observability UI                      http://localhost:3001
+#
+#  Optional: set SENTRY_DSN and NEXT_PUBLIC_SENTRY_DSN in .env.demo
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  auxin:
+    driver: bridge
+
+services:
+
+  # ── PyBullet digital twin (ws frame server) ──────────────────────────────
+  twin:
+    build:
+      context: .
+      dockerfile: twin/Dockerfile
+    networks: [auxin]
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost',8765),2); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  # ── Bridge (SDK, twin mode) ───────────────────────────────────────────────
+  bridge:
+    build:
+      context: .
+      dockerfile: sdk/Dockerfile
+    networks: [auxin]
+    ports:
+      - "8766:8766"
+      - "8767:8767"
+      - "9090:9090"
+    environment:
+      AUXIN_SOURCE: twin
+      TWIN_WS_URL: ws://twin:8765
+      BRIDGE_WS_PORT: "8766"
+      BRIDGE_HEALTHZ_PORT: "8767"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      SOLANA_RPC_URL: "${SOLANA_RPC_URL:-https://api.devnet.solana.com}"
+    depends_on:
+      twin:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,json; r=urllib.request.urlopen('http://localhost:8767/healthz',timeout=3); d=json.loads(r.read()); exit(0 if d.get('status')=='ok' else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 9
+      start_period: 20s
+
+  # ── Next.js dashboard ─────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+      args:
+        NEXT_PUBLIC_BRIDGE_WS_URL: ws://localhost:8766
+        NEXT_PUBLIC_TWIN_WS_URL: ws://localhost:8765
+        NEXT_PUBLIC_PROGRAM_ID: "${NEXT_PUBLIC_PROGRAM_ID:-7sUSbF9zDN9QKVwA2ZGskg9gFgvbMuQpCdpt3hfgf1Mm}"
+        NEXT_PUBLIC_HELIUS_RPC_URL: "${NEXT_PUBLIC_HELIUS_RPC_URL:-}"
+        NEXT_PUBLIC_AGENT_PUBKEY: "${NEXT_PUBLIC_AGENT_PUBKEY:-}"
+    networks: [auxin]
+    ports:
+      - "3000:3000"
+    depends_on:
+      bridge:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    networks: [auxin]
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    depends_on:
+      bridge:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    networks: [auxin]
+    ports:
+      - "3001:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/auxin_dashboard.json"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/auxin_dashboard.json:/var/lib/grafana/dashboards/auxin_dashboard.json:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped

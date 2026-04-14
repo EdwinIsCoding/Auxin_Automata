@@ -10,8 +10,8 @@ from solders.keypair import Keypair
 
 from auxin_sdk.wallet import HardwareWallet
 
-
 # ── Keypair persistence ───────────────────────────────────────────────────────
+
 
 def test_load_or_create_new_keypair(tmp_path: Path) -> None:
     """Creating a wallet at a non-existent path writes a 64-byte keypair JSON."""
@@ -54,6 +54,7 @@ def test_different_wallets_have_different_pubkeys(tmp_path: Path) -> None:
 
 # ── Identity ──────────────────────────────────────────────────────────────────
 
+
 def test_pubkey_is_base58_string(tmp_path: Path) -> None:
     """Public key string representation is ASCII (base58) and non-empty."""
     wallet = HardwareWallet.load_or_create(tmp_path / "hardware.json")
@@ -75,6 +76,7 @@ def test_solders_keypair_pubkey_matches_wallet_pubkey(tmp_path: Path) -> None:
 
 
 # ── Transaction signing ───────────────────────────────────────────────────────
+
 
 def test_sign_transaction_calls_sign_on_compatible_tx(tmp_path: Path) -> None:
     """sign_transaction delegates to tx.sign([keypair]) when the method exists."""
@@ -105,6 +107,7 @@ def test_sign_transaction_returns_object_without_sign_method(tmp_path: Path) -> 
 
 
 # ── Network integration (Devnet — skipped by default) ─────────────────────────
+
 
 @pytest.mark.network
 async def test_get_balance_returns_non_negative_int(tmp_path: Path) -> None:

@@ -11,9 +11,9 @@ from auxin_sdk.fixtures import all_fixture_images, sample_workspace_image
 from auxin_sdk.hashing import sha256_hex
 from auxin_sdk.schema import TelemetryFrame
 from auxin_sdk.sources.mock import (
+    _TORQUE_SPIKE_VALUE,
     MockSource,
     ReplaySource,
-    _TORQUE_SPIKE_VALUE,
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,6 +76,7 @@ async def test_end_effector_pose_is_dict() -> None:
 async def test_velocities_are_finite() -> None:
     """All velocity values must be finite numbers."""
     import math
+
     source = MockSource(rate_hz=10.0, seed=0)
     frames = await collect(source, 5)
     for frame in frames:
@@ -149,11 +150,9 @@ async def test_anomaly_spacing_respects_jitter() -> None:
     frames = await collect(source, 100)
     anomaly_indices = [i for i, f in enumerate(frames) if f.anomaly_flags]
     assert len(anomaly_indices) >= 2
-    for a, b in zip(anomaly_indices, anomaly_indices[1:]):
+    for a, b in zip(anomaly_indices, anomaly_indices[1:], strict=False):
         gap = b - a
-        assert every - 3 <= gap <= every + 3, (
-            f"gap {gap} is outside [{every-3}, {every+3}]"
-        )
+        assert every - 3 <= gap <= every + 3, f"gap {gap} is outside [{every - 3}, {every + 3}]"
 
 
 # ── Seeded reproducibility ────────────────────────────────────────────────────
@@ -165,7 +164,7 @@ async def test_same_seed_produces_same_joint_positions() -> None:
     s2 = MockSource(rate_hz=0, seed=99)
     f1 = await collect(s1, 15)
     f2 = await collect(s2, 15)
-    for a, b in zip(f1, f2):
+    for a, b in zip(f1, f2, strict=True):
         assert a.joint_positions == b.joint_positions
         assert a.joint_torques == b.joint_torques
         assert a.anomaly_flags == b.anomaly_flags
@@ -176,7 +175,7 @@ async def test_different_seeds_produce_different_sequences() -> None:
     f1 = await collect(MockSource(rate_hz=0, seed=1), 10)
     f2 = await collect(MockSource(rate_hz=0, seed=2), 10)
     positions_match = all(
-        a.joint_positions == b.joint_positions for a, b in zip(f1, f2)
+        a.joint_positions == b.joint_positions for a, b in zip(f1, f2, strict=False)
     )
     assert not positions_match, "different seeds produced identical sequences"
 
@@ -193,13 +192,14 @@ async def test_record_to_creates_jsonl_file(tmp_path: Path) -> None:
         await collect(s, 5)
 
     assert record_path.exists()
-    lines = [l for l in record_path.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in record_path.read_text().splitlines() if ln.strip()]
     assert len(lines) == 5
 
 
 async def test_record_to_each_line_is_valid_json(tmp_path: Path) -> None:
     """Every line in the recording must be valid JSON parseable as TelemetryFrame."""
     import json
+
     record_path = tmp_path / "session.jsonl"
     source = MockSource(rate_hz=0, seed=0)
 
@@ -264,7 +264,7 @@ async def test_replay_source_hashes_match_recorded_hashes(tmp_path: Path) -> Non
     replayed = await collect(replay, 9999)
 
     assert len(replayed) == len(original)
-    for i, (orig, rep) in enumerate(zip(original, replayed)):
+    for i, (orig, rep) in enumerate(zip(original, replayed, strict=True)):
         orig_hash = sha256_hex(orig)
         rep_hash = sha256_hex(rep)
         assert orig_hash == rep_hash, (
@@ -286,7 +286,7 @@ async def test_replay_includes_anomalous_frames(tmp_path: Path) -> None:
     orig_anomalous = [f for f in original if f.anomaly_flags]
     rep_anomalous = [f for f in replayed if f.anomaly_flags]
     assert len(orig_anomalous) == len(rep_anomalous)
-    for o, r in zip(orig_anomalous, rep_anomalous):
+    for o, r in zip(orig_anomalous, rep_anomalous, strict=True):
         assert o.anomaly_flags == r.anomaly_flags
         assert o.joint_torques == r.joint_torques
 
@@ -316,7 +316,6 @@ def test_sample_workspace_image_label_consistent_with_filename() -> None:
 
 def test_sample_workspace_image_seeded_reproducible() -> None:
     """Seeded sampler must return the same image on repeated calls."""
-    rng = random.Random(0)
     results = [sample_workspace_image(rng=random.Random(0)) for _ in range(5)]
     # All calls with fresh seed=0 must pick the same image
     assert all(r[0] == results[0][0] for r in results)

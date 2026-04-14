@@ -42,6 +42,9 @@ class TwinSource(TelemetrySource):
         sim_steps_per_frame = round(sim_rate_hz / rate_hz) when rate_hz > 0.
     gui
         Launch PyBullet with GUI window.  Default: DIRECT (headless).
+    force_collision_after
+        If > 0, teleport the obstacle onto the EEF after this many frames.
+        Set via TWIN_FORCE_COLLISION env var for the E2E anomaly demo.
     """
 
     def __init__(
@@ -49,11 +52,20 @@ class TwinSource(TelemetrySource):
         rate_hz: float = 10.0,
         sim_rate_hz: float = 240.0,
         gui: bool = False,
+        force_collision_after: int = 0,
     ) -> None:
+        import os
+
         self._rate_hz = rate_hz
         self._sim_rate_hz = sim_rate_hz
         self._gui = gui
         self._closed = False
+        # TWIN_FORCE_COLLISION=N teleports the obstacle to the EEF after N frames.
+        # This is the E2E anomaly trigger for demo / testing purposes.
+        env_val = os.environ.get("TWIN_FORCE_COLLISION", "")
+        self._force_collision_after: int = (
+            int(env_val) if env_val.isdigit() else force_collision_after
+        )
 
     # ── TelemetrySource ABC ───────────────────────────────────────────────────
 
@@ -75,12 +87,14 @@ class TwinSource(TelemetrySource):
 
         scene = RobotScene(gui=self._gui, sim_rate_hz=self._sim_rate_hz)
         trajectory = PickAndPlace()
+        frame_count = 0
 
         log.debug(
             "twin_source.started",
             rate_hz=self._rate_hz,
             sim_rate_hz=self._sim_rate_hz,
             sim_steps_per_frame=sim_steps_per_frame,
+            force_collision_after=self._force_collision_after,
         )
 
         try:
@@ -89,9 +103,22 @@ class TwinSource(TelemetrySource):
                 for _ in range(sim_steps_per_frame):
                     trajectory.step(scene)
 
+                frame_count += 1
+
+                # ── Force collision for demo / E2E testing
+                if self._force_collision_after > 0 and frame_count == self._force_collision_after:
+                    log.info("twin_source.forcing_collision", frame=frame_count)
+                    scene.teleport_obstacle_to_eef()
+
                 # ── Read robot state
                 positions, velocities, torques = scene.joint_states()
                 eef = scene.eef_pose()
+
+                # ── Collision detection — populates anomaly_flags
+                anomaly_flags: list[str] = []
+                if scene.has_collision():
+                    anomaly_flags = ["collision_detected"]
+                    log.warning("twin_source.collision_detected", frame=frame_count)
 
                 frame = TelemetryFrame(
                     timestamp=datetime.now(timezone.utc),
@@ -99,7 +126,7 @@ class TwinSource(TelemetrySource):
                     joint_velocities=velocities,
                     joint_torques=torques,
                     end_effector_pose=eef,
-                    anomaly_flags=[],
+                    anomaly_flags=anomaly_flags,
                 )
 
                 yield frame

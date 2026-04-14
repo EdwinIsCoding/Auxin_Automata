@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
@@ -25,11 +25,11 @@ from .base import TelemetrySource
 log = structlog.get_logger(__name__)
 
 # Kinematics constants
-_POSITION_AMPLITUDE = 0.5   # radians
-_POSITION_FREQ = 0.3        # rad/s (slow drift, visually convincing)
+_POSITION_AMPLITUDE = 0.5  # radians
+_POSITION_FREQ = 0.3  # rad/s (slow drift, visually convincing)
 _POSITION_NOISE_STD = 0.02  # radians
-_BASELINE_TORQUE = 5.0      # N·m
-_TORQUE_NOISE_STD = 0.5     # N·m
+_BASELINE_TORQUE = 5.0  # N·m
+_TORQUE_NOISE_STD = 0.5  # N·m
 _TORQUE_SPIKE_VALUE = 95.0  # N·m  (matches watchdog threshold of 80.0)
 
 
@@ -77,7 +77,9 @@ class MockSource(TelemetrySource):
         if num_joints < 1:
             raise ValueError(f"num_joints must be ≥ 1, got {num_joints}")
         if anomaly_every < 4:
-            raise ValueError(f"anomaly_every must be ≥ 4 (needs ±3 jitter room), got {anomaly_every}")
+            raise ValueError(
+                f"anomaly_every must be ≥ 4 (needs ±3 jitter room), got {anomaly_every}"
+            )
 
         self._rate_hz = rate_hz
         self._num_joints = num_joints
@@ -92,7 +94,7 @@ class MockSource(TelemetrySource):
 
     # ── Recording API ─────────────────────────────────────────────────────────
 
-    def record_to(self, path: Path | str) -> "_RecordCtx":
+    def record_to(self, path: Path | str) -> _RecordCtx:
         """
         Return a sync context manager that records every yielded frame to *path* (JSONL).
 
@@ -131,8 +133,7 @@ class MockSource(TelemetrySource):
             # ── Velocities: backward finite difference
             if dt > 0.0:
                 velocities = [
-                    (positions[j] - prev_positions[j]) / dt
-                    for j in range(self._num_joints)
+                    (positions[j] - prev_positions[j]) / dt for j in range(self._num_joints)
                 ]
             else:
                 velocities = [0.0] * self._num_joints
@@ -158,7 +159,7 @@ class MockSource(TelemetrySource):
                 )
 
             frame = TelemetryFrame(
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 joint_positions=positions,
                 joint_velocities=velocities,
                 joint_torques=torques,
@@ -185,6 +186,7 @@ class MockSource(TelemetrySource):
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 class _RecordCtx:
     """Sync context manager that opens a JSONL file and attaches it to *source*."""
@@ -215,6 +217,7 @@ def _ee_pose(positions: list[float]) -> dict[str, float]:
 
 
 # ── ReplaySource ──────────────────────────────────────────────────────────────
+
 
 class ReplaySource(TelemetrySource):
     """

@@ -1,0 +1,6 @@
+Always use Next.js App Router.
+Always use Tailwind CSS for styling.
+Always use shadcn/ui for base components.
+Aesthetic: "Mechafloral". Dark slate backgrounds, deep teal/Solana green accents. Highly technical.
+Never leave blank screens; always implement loading states.
+Always use lucide-react for icons.

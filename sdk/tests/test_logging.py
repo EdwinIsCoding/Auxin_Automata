@@ -15,6 +15,7 @@ def test_configure_structlog_runs_without_error() -> None:
 
 def test_configure_structlog_accepts_custom_log_level() -> None:
     import logging
+
     configure_structlog(log_level=logging.DEBUG)
 
 

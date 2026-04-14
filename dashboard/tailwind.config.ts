@@ -1,6 +1,5 @@
 import type { Config } from "tailwindcss";
 
-// Design tokens defined here are expanded fully in Phase 2C.
 const config: Config = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -11,7 +10,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Mechafloral palette — finalised in Phase 2C
         background: "#0a0e1a",
         surface: "#131826",
         border: "#1f2937",
@@ -19,6 +17,20 @@ const config: Config = {
         "accent-solana": "#14F195",
         "text-primary": "#f1f5f9",
         "text-muted": "#94a3b8",
+      },
+      fontFamily: {
+        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "JetBrains Mono", "monospace"],
+      },
+      animation: {
+        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "scroll-up": "scrollUp 20s linear infinite",
+      },
+      keyframes: {
+        scrollUp: {
+          "0%": { transform: "translateY(0)" },
+          "100%": { transform: "translateY(-50%)" },
+        },
       },
     },
   },

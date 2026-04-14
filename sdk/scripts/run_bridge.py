@@ -32,19 +32,27 @@ _SDK_ROOT = Path(__file__).parent.parent
 if str(_SDK_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_SDK_ROOT / "src"))
 
-import structlog
+import structlog  # noqa: E402
 
-from auxin_sdk.bridge import Bridge, WebsocketBroadcaster
-from auxin_sdk.logging import configure_structlog
-from auxin_sdk.oracle import SafetyOracle
-from auxin_sdk.program.client import AuxinProgramClient
-from auxin_sdk.sources.base import TelemetrySource
-from auxin_sdk.wallet import HardwareWallet
+# ── Sentry (optional — only active when SENTRY_DSN is set) ───────────────────
+_sentry_dsn = os.environ.get("SENTRY_DSN")
+if _sentry_dsn:
+    import sentry_sdk as _sentry
+
+    _sentry.init(dsn=_sentry_dsn, traces_sample_rate=0.2)
+
+from auxin_sdk.bridge import Bridge, WebsocketBroadcaster  # noqa: E402
+from auxin_sdk.logging import configure_structlog  # noqa: E402
+from auxin_sdk.oracle import SafetyOracle  # noqa: E402
+from auxin_sdk.program.client import AuxinProgramClient  # noqa: E402
+from auxin_sdk.sources.base import TelemetrySource  # noqa: E402
+from auxin_sdk.wallet import HardwareWallet  # noqa: E402
 
 log = structlog.get_logger(__name__)
 
 
 # ── Source factory — the ONLY place AUXIN_SOURCE is read ─────────────────────
+
 
 def _build_source(source_name: str) -> TelemetrySource:
     """
@@ -58,6 +66,7 @@ def _build_source(source_name: str) -> TelemetrySource:
 
     if name == "mock":
         from auxin_sdk.sources.mock import MockSource
+
         rate_hz = float(os.environ.get("AUXIN_MOCK_RATE_HZ", "10"))
         anomaly_every = int(os.environ.get("AUXIN_MOCK_ANOMALY_EVERY", "12"))
         log.info("source.selected", kind="mock", rate_hz=rate_hz, anomaly_every=anomaly_every)
@@ -66,22 +75,22 @@ def _build_source(source_name: str) -> TelemetrySource:
     if name == "twin":
         # TwinSource lives in /twin workspace; installed as `twin` package or on PYTHONPATH
         from twin.source import TwinSource  # type: ignore[import-untyped]
+
         log.info("source.selected", kind="twin")
         return TwinSource()
 
     if name == "ros2":
         # ROS2Source lives in /edge workspace
         from auxin_edge.ros2_source import ROS2Source  # type: ignore[import-untyped]
+
         log.info("source.selected", kind="ros2")
         return ROS2Source()
 
-    raise ValueError(
-        f"Unknown AUXIN_SOURCE={source_name!r}. "
-        "Valid values: mock, twin, ros2"
-    )
+    raise ValueError(f"Unknown AUXIN_SOURCE={source_name!r}. Valid values: mock, twin, ros2")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 async def main() -> None:
     configure_structlog()
@@ -114,6 +123,7 @@ async def main() -> None:
 
     # ── Provider (optional) ───────────────────────────────────────────────────
     from solders.pubkey import Pubkey
+
     provider_str = os.environ.get("PROVIDER_PUBKEY")
     provider_pubkey = Pubkey.from_string(provider_str) if provider_str else None
 
@@ -143,7 +153,6 @@ async def main() -> None:
         rpc_url=rpc_url,
         program_id=program_id,
     ) as program_client:
-
         bridge = Bridge(
             source=source,
             oracle=oracle,

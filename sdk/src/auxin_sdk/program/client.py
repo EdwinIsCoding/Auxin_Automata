@@ -46,20 +46,19 @@ from __future__ import annotations
 import hashlib
 import json
 import struct
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
 
 import structlog
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
 from solders.hash import Hash
 from solders.instruction import AccountMeta, Instruction
-from solders.keypair import Keypair
+from solders.message import MessageV0
 from solders.pubkey import Pubkey
 from solders.system_program import ID as SYS_PROGRAM_ID
 from solders.transaction import VersionedTransaction
-from solders.message import MessageV0
 
 from auxin_sdk.wallet import HardwareWallet
 
@@ -78,6 +77,7 @@ LAMPORTS_PER_SOL = 1_000_000_000
 
 # ── Discriminator helpers ─────────────────────────────────────────────────────
 
+
 def _ix_disc(name: str) -> bytes:
     """Compute the 8-byte Anchor instruction discriminator."""
     return hashlib.sha256(f"global:{name}".encode()).digest()[:8]
@@ -90,14 +90,15 @@ def _acc_disc(name: str) -> bytes:
 
 # Pre-computed discriminators (validated against the program source)
 _DISC = {
-    "initialize_agent":          _ix_disc("initialize_agent"),
-    "stream_compute_payment":    _ix_disc("stream_compute_payment"),
-    "log_compliance_event":      _ix_disc("log_compliance_event"),
+    "initialize_agent": _ix_disc("initialize_agent"),
+    "stream_compute_payment": _ix_disc("stream_compute_payment"),
+    "log_compliance_event": _ix_disc("log_compliance_event"),
     "update_provider_whitelist": _ix_disc("update_provider_whitelist"),
 }
 
 
 # ── Borsh serialisation helpers ───────────────────────────────────────────────
+
 
 def _pack_pubkey(pk: Pubkey) -> bytes:
     return bytes(pk)
@@ -131,6 +132,7 @@ def _pack_enum_unit(variant_idx: int) -> bytes:
 
 # ── PDA derivation ────────────────────────────────────────────────────────────
 
+
 def _find_agent_pda(program_id: Pubkey, owner: Pubkey) -> tuple[Pubkey, int]:
     return Pubkey.find_program_address([b"agent", bytes(owner)], program_id)
 
@@ -139,16 +141,13 @@ def _find_provider_pda(program_id: Pubkey, provider: Pubkey) -> tuple[Pubkey, in
     return Pubkey.find_program_address([b"provider", bytes(provider)], program_id)
 
 
-def _find_compliance_log_pda(
-    program_id: Pubkey, agent: Pubkey, slot: int
-) -> tuple[Pubkey, int]:
+def _find_compliance_log_pda(program_id: Pubkey, agent: Pubkey, slot: int) -> tuple[Pubkey, int]:
     slot_bytes = struct.pack("<Q", slot)
-    return Pubkey.find_program_address(
-        [b"log", bytes(agent), slot_bytes], program_id
-    )
+    return Pubkey.find_program_address([b"log", bytes(agent), slot_bytes], program_id)
 
 
 # ── Client ────────────────────────────────────────────────────────────────────
+
 
 class AuxinProgramClient:
     """
@@ -183,16 +182,12 @@ class AuxinProgramClient:
             yield cls(rpc, pid)
 
     @staticmethod
-    def _resolve_program_id(
-        explicit: Pubkey | str | None, idl_path: Path | str | None
-    ) -> Pubkey:
+    def _resolve_program_id(explicit: Pubkey | str | None, idl_path: Path | str | None) -> Pubkey:
         if explicit is not None:
             return Pubkey.from_string(str(explicit)) if isinstance(explicit, str) else explicit
 
         # Try deployed.json
-        deployed = (
-            Path(__file__).parents[5] / "programs/deployed.json"
-        )
+        deployed = Path(__file__).parents[5] / "programs/deployed.json"
         if deployed.exists():
             data = json.loads(deployed.read_text())
             return Pubkey.from_string(data["program_id"])
@@ -270,8 +265,8 @@ class AuxinProgramClient:
             program_id=self.program_id,
             data=bytes(data),
             accounts=[
-                AccountMeta(pubkey=agent_pda,      is_signer=False, is_writable=True),
-                AccountMeta(pubkey=owner,           is_signer=True,  is_writable=True),
+                AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=True),
+                AccountMeta(pubkey=owner, is_signer=True, is_writable=True),
                 AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
             ],
         )
@@ -310,11 +305,11 @@ class AuxinProgramClient:
             program_id=self.program_id,
             data=bytes(data),
             accounts=[
-                AccountMeta(pubkey=agent_pda,           is_signer=False, is_writable=True),
-                AccountMeta(pubkey=hw_wallet.pubkey,    is_signer=True,  is_writable=True),
-                AccountMeta(pubkey=provider_pubkey,     is_signer=False, is_writable=True),
+                AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=True),
+                AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True, is_writable=True),
+                AccountMeta(pubkey=provider_pubkey, is_signer=False, is_writable=True),
                 AccountMeta(pubkey=provider_record_pda, is_signer=False, is_writable=True),
-                AccountMeta(pubkey=SYS_PROGRAM_ID,      is_signer=False, is_writable=False),
+                AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
             ],
         )
 
@@ -368,10 +363,10 @@ class AuxinProgramClient:
             program_id=self.program_id,
             data=bytes(data),
             accounts=[
-                AccountMeta(pubkey=agent_pda,        is_signer=False, is_writable=False),
-                AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True,  is_writable=True),
-                AccountMeta(pubkey=log_pda,          is_signer=False, is_writable=True),
-                AccountMeta(pubkey=SYS_PROGRAM_ID,   is_signer=False, is_writable=False),
+                AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=False),
+                AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True, is_writable=True),
+                AccountMeta(pubkey=log_pda, is_signer=False, is_writable=True),
+                AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
             ],
         )
 
@@ -425,7 +420,7 @@ class AuxinProgramClient:
             data=bytes(data),
             accounts=[
                 AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=True),
-                AccountMeta(pubkey=owner,     is_signer=True,  is_writable=False),
+                AccountMeta(pubkey=owner, is_signer=True, is_writable=False),
             ],
         )
 

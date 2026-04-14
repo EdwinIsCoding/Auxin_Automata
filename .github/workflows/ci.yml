@@ -85,6 +85,11 @@ jobs:
       - name: Anchor build
         run: cd programs && anchor build
 
+      - name: Cargo clippy
+        # -A unexpected_cfgs and -A diverging_sub_expression suppress Anchor/Solana
+        # macro false positives from #[program] when running on the host Rust toolchain.
+        run: cd programs && cargo clippy -- -D warnings -A unexpected_cfgs -A clippy::diverging_sub_expression
+
       - name: Anchor test (localnet)
         run: cd programs && anchor test
 

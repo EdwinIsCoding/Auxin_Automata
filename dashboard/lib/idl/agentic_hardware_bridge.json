@@ -1,0 +1,770 @@
+{
+  "address": "7sUSbF9zDN9QKVwA2ZGskg9gFgvbMuQpCdpt3hfgf1Mm",
+  "metadata": {
+    "name": "agentic_hardware_bridge",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Auxin Automata M2M payment and compliance bridge on Solana"
+  },
+  "instructions": [
+    {
+      "name": "initialize_agent",
+      "docs": [
+        "Creates a HardwareAgent PDA and funds it with `compute_budget_lamports`."
+      ],
+      "discriminator": [
+        212,
+        81,
+        156,
+        211,
+        212,
+        110,
+        21,
+        28
+      ],
+      "accounts": [
+        {
+          "name": "agent",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "hardware_pubkey",
+          "type": "pubkey"
+        },
+        {
+          "name": "compute_budget_lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "log_compliance_event",
+      "docs": [
+        "Records an immutable ComplianceLog PDA.",
+        "Signed by the hardware key. Never rate-limited or budget-blocked.",
+        "`slot` must equal the current slot — used as a PDA seed for uniqueness."
+      ],
+      "discriminator": [
+        35,
+        2,
+        97,
+        171,
+        218,
+        39,
+        132,
+        60
+      ],
+      "accounts": [
+        {
+          "name": "agent",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "agent.owner",
+                "account": "HardwareAgent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hardware_signer",
+          "docs": [
+            "The hardware key signs autonomously — must match agent.hardware_pubkey."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "log",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "agent"
+              },
+              {
+                "kind": "arg",
+                "path": "slot"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "hash",
+          "type": "string"
+        },
+        {
+          "name": "severity",
+          "type": "u8"
+        },
+        {
+          "name": "reason_code",
+          "type": "u16"
+        },
+        {
+          "name": "slot",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "stream_compute_payment",
+      "docs": [
+        "Transfers lamports from the agent PDA to a whitelisted provider.",
+        "Signed by the hardware key (autonomous). Enforces per-tx cap,",
+        "rolling-window rate limit, and lifetime compute budget."
+      ],
+      "discriminator": [
+        228,
+        50,
+        123,
+        189,
+        232,
+        61,
+        81,
+        21
+      ],
+      "accounts": [
+        {
+          "name": "agent",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "agent.owner",
+                "account": "HardwareAgent"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hardware_signer",
+          "docs": [
+            "The hardware key signs autonomously — must match agent.hardware_pubkey."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "provider_wallet",
+          "writable": true
+        },
+        {
+          "name": "provider_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  118,
+                  105,
+                  100,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "provider_wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_provider_whitelist",
+      "docs": [
+        "Adds or removes a provider from the HardwareAgent whitelist.",
+        "Only the owner authority may call this instruction."
+      ],
+      "discriminator": [
+        210,
+        182,
+        206,
+        196,
+        186,
+        52,
+        133,
+        46
+      ],
+      "accounts": [
+        {
+          "name": "agent",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "Only the owner authority may modify the whitelist."
+          ],
+          "signer": true,
+          "relations": [
+            "agent"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "provider",
+          "type": "pubkey"
+        },
+        {
+          "name": "action",
+          "type": {
+            "defined": {
+              "name": "WhitelistAction"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ComplianceLog",
+      "discriminator": [
+        41,
+        96,
+        251,
+        107,
+        173,
+        133,
+        46,
+        125
+      ]
+    },
+    {
+      "name": "ComputeProvider",
+      "discriminator": [
+        233,
+        39,
+        233,
+        228,
+        195,
+        42,
+        109,
+        111
+      ]
+    },
+    {
+      "name": "HardwareAgent",
+      "discriminator": [
+        206,
+        189,
+        189,
+        28,
+        30,
+        203,
+        56,
+        148
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "AgentInitializedEvent",
+      "discriminator": [
+        7,
+        218,
+        129,
+        38,
+        47,
+        93,
+        84,
+        74
+      ]
+    },
+    {
+      "name": "ComplianceEvent",
+      "discriminator": [
+        91,
+        66,
+        46,
+        200,
+        143,
+        43,
+        176,
+        16
+      ]
+    },
+    {
+      "name": "ComputePaymentEvent",
+      "discriminator": [
+        223,
+        238,
+        225,
+        41,
+        255,
+        173,
+        246,
+        1
+      ]
+    },
+    {
+      "name": "ProviderWhitelistUpdatedEvent",
+      "discriminator": [
+        232,
+        198,
+        215,
+        184,
+        165,
+        50,
+        216,
+        217
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "UnauthorizedSigner",
+      "msg": "Unauthorized: signer does not match expected key"
+    },
+    {
+      "code": 6001,
+      "name": "BudgetExceeded",
+      "msg": "Compute budget exceeded"
+    },
+    {
+      "code": 6002,
+      "name": "RateLimitExceeded",
+      "msg": "Rate limit exceeded: too many transactions in current window"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidProvider",
+      "msg": "Invalid provider operation"
+    },
+    {
+      "code": 6004,
+      "name": "ProviderNotWhitelisted",
+      "msg": "Provider is not whitelisted for this agent"
+    },
+    {
+      "code": 6005,
+      "name": "HashTooLong",
+      "msg": "Hash exceeds maximum length of 64 bytes"
+    },
+    {
+      "code": 6006,
+      "name": "MaxProvidersReached",
+      "msg": "Provider whitelist is full (max 8)"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidSeverity",
+      "msg": "Invalid severity: must be 0, 1, 2, or 3"
+    },
+    {
+      "code": 6008,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6009,
+      "name": "ZeroAmount",
+      "msg": "Payment amount must be non-zero"
+    },
+    {
+      "code": 6010,
+      "name": "PerTxCapExceeded",
+      "msg": "Per-transaction payment cap exceeded (max 0.001 SOL)"
+    }
+  ],
+  "types": [
+    {
+      "name": "AgentInitializedEvent",
+      "docs": [
+        "Emitted by `initialize_agent`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "hardware_pubkey",
+            "type": "pubkey"
+          },
+          {
+            "name": "compute_budget_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComplianceEvent",
+      "docs": [
+        "Emitted by `log_compliance_event`.",
+        "Never dropped — see CLAUDE.md compliance contract."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "hash",
+            "type": "string"
+          },
+          {
+            "name": "severity",
+            "type": "u8"
+          },
+          {
+            "name": "reason_code",
+            "type": "u16"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComplianceLog",
+      "docs": [
+        "Immutable on-chain record of a compliance event.",
+        "",
+        "Seeds: `[b\"log\", agent.key().as_ref(), &slot.to_le_bytes()]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "agent",
+            "docs": [
+              "The HardwareAgent that triggered this event."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "hash",
+            "docs": [
+              "Keccak-256 hex digest of the raw telemetry payload (max 64 chars)."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "severity",
+            "docs": [
+              "Severity level: 0 = DEBUG, 1 = INFO, 2 = WARN, 3 = CRITICAL."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "reason_code",
+            "docs": [
+              "Application-defined reason code (e.g. 0x0001 = torque-limit)."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "timestamp",
+            "docs": [
+              "Unix timestamp from Clock."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Canonical PDA bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComputePaymentEvent",
+      "docs": [
+        "Emitted by `stream_compute_payment` on every successful transfer."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider",
+            "type": "pubkey"
+          },
+          {
+            "name": "lamports",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComputeProvider",
+      "docs": [
+        "PDA tracking aggregate lamports received by a compute provider.",
+        "",
+        "Seeds: `[b\"provider\", provider_pubkey.as_ref()]`",
+        "Initialized lazily on first payment to a new provider."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "provider_pubkey",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_received",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HardwareAgent",
+      "docs": [
+        "PDA representing a registered autonomous hardware agent.",
+        "",
+        "Seeds: `[b\"agent\", owner.key().as_ref()]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": [
+              "Wallet authority — must sign init and whitelist-update instructions."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "hardware_pubkey",
+            "docs": [
+              "Ed25519 key burned into the hardware module.",
+              "Signs autonomous payment and compliance instructions."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "compute_budget_lamports",
+            "docs": [
+              "Lifetime cap on compute payments (lamports).",
+              "Also the SOL deposited into this PDA at init time."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "lamports_spent",
+            "docs": [
+              "Running total of lamports disbursed via stream_compute_payment."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "providers",
+            "docs": [
+              "Whitelisted compute providers; max `MAX_PROVIDERS` (8) entries."
+            ],
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Unix timestamp at account creation."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "last_window_start_slot",
+            "docs": [
+              "Slot at which the current rate-limit window began."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "window_tx_count",
+            "docs": [
+              "Transactions counted in the current rate-limit window."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "Canonical PDA bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProviderWhitelistUpdatedEvent",
+      "docs": [
+        "Emitted by `update_provider_whitelist`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider",
+            "type": "pubkey"
+          },
+          {
+            "name": "added",
+            "docs": [
+              "true = added, false = removed."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WhitelistAction",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Add"
+          },
+          {
+            "name": "Remove"
+          }
+        ]
+      }
+    }
+  ]
+}

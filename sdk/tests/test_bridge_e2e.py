@@ -21,16 +21,15 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from solders.keypair import Keypair
 
 from auxin_sdk.bridge import (
     COMPLIANCE_SEVERITY_ANOMALY,
-    PAYMENT_AMOUNT_LAMPORTS,
     PAYMENT_QUEUE_MAXSIZE,
     Bridge,
     WebsocketBroadcaster,
@@ -44,12 +43,12 @@ from auxin_sdk.schema import TelemetryFrame
 from auxin_sdk.sources.mock import MockSource
 from auxin_sdk.wallet import HardwareWallet
 
-
 # ── Shared helpers ────────────────────────────────────────────────────────────
+
 
 def _normal_frame() -> TelemetryFrame:
     return TelemetryFrame(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         joint_positions=[0.1] * 6,
         joint_velocities=[0.0] * 6,
         joint_torques=[5.0] * 6,
@@ -62,7 +61,7 @@ def _anomaly_frame() -> TelemetryFrame:
     torques = [5.0] * 6
     torques[0] = 95.0
     return TelemetryFrame(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         joint_positions=[0.1] * 6,
         joint_velocities=[0.0] * 6,
         joint_torques=torques,
@@ -123,6 +122,7 @@ def _make_bridge(
 
 
 # ── Unit tests ────────────────────────────────────────────────────────────────
+
 
 class TestBridgeUnit:
     """Fast, in-process tests.  No network, no aiohttp servers."""
@@ -361,9 +361,16 @@ class TestBridgeUnit:
         response = await bridge._healthz_handler(request)
         body = response.body
         import json
+
         data = json.loads(body)
-        for key in ("source_status", "last_successful_tx", "last_oracle_latency_ms",
-                    "queue_depths", "uptime_seconds", "frames_processed"):
+        for key in (
+            "source_status",
+            "last_successful_tx",
+            "last_oracle_latency_ms",
+            "queue_depths",
+            "uptime_seconds",
+            "frames_processed",
+        ):
             assert key in data, f"Missing key in /healthz: {key}"
 
     # ── Frames processed counter ──────────────────────────────────────────────
@@ -382,6 +389,7 @@ class TestBridgeUnit:
 
 
 # ── Devnet E2E test ───────────────────────────────────────────────────────────
+
 
 def _devnet_keypair_available() -> bool:
     return bool(os.environ.get("DEVNET_KEYPAIR"))
@@ -430,9 +438,7 @@ class TestBridgeDevnet:
         compliance_received: asyncio.Event = asyncio.Event()
         compliance_sigs: list[str] = []
 
-        async with AuxinProgramClient.connect(
-            rpc_url=rpc_url, program_id=program_id
-        ) as client:
+        async with AuxinProgramClient.connect(rpc_url=rpc_url, program_id=program_id) as client:
             # Wrap log_compliance to capture the returned signature
             _original_log_compliance = client.log_compliance
 

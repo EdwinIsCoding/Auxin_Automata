@@ -25,12 +25,12 @@ if TYPE_CHECKING:
 
 # Each entry: (target_xyz, label)
 _WAYPOINTS: list[tuple[list[float], str]] = [
-    ([0.40,  0.00, 0.62], "pre_grasp"),   # above pick spot (robot base at z=0.70)
-    ([0.40,  0.00, 0.42], "grasp"),        # lower to object height
-    ([0.40,  0.00, 0.62], "lift"),         # lift back up
-    ([0.40,  0.30, 0.62], "transport"),    # swing to place column
-    ([0.40,  0.30, 0.42], "place"),        # lower to place height
-    ([0.40,  0.30, 0.62], "retract"),      # retract upward
+    ([0.40, 0.00, 0.62], "pre_grasp"),  # above pick spot (robot base at z=0.70)
+    ([0.40, 0.00, 0.42], "grasp"),  # lower to object height
+    ([0.40, 0.00, 0.62], "lift"),  # lift back up
+    ([0.40, 0.30, 0.62], "transport"),  # swing to place column
+    ([0.40, 0.30, 0.42], "place"),  # lower to place height
+    ([0.40, 0.30, 0.62], "retract"),  # retract upward
 ]
 
 # Number of simulation steps to hold each waypoint before advancing.

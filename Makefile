@@ -1,4 +1,4 @@
-.PHONY: bootstrap lint test demo clean
+.PHONY: bootstrap lint test demo demo-down clean
 
 # ── Bootstrap ────────────────────────────────────────────────────────────────
 # Install all workspace dependencies and pre-commit hooks.
@@ -26,10 +26,30 @@ test:
 
 # ── Demo ─────────────────────────────────────────────────────────────────────
 # Spins up the full twin-mode stack via docker-compose.
-# Added in Phase 4 (docker-compose.demo.yml does not exist yet).
+# Waits for services to be healthy, then prints all endpoint URLs.
 demo:
-	@[ -f docker-compose.demo.yml ] || (echo "docker-compose.demo.yml not yet created (Phase 4)" && exit 1)
-	docker compose -f docker-compose.demo.yml up --build
+	docker compose -f docker-compose.demo.yml up --build -d
+	@echo ""
+	@echo "Waiting for bridge to become healthy…"
+	@for i in $$(seq 1 30); do \
+		STATUS=$$(docker compose -f docker-compose.demo.yml ps --format json bridge 2>/dev/null \
+		         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0].get('Health',''))" 2>/dev/null || echo ""); \
+		[ "$$STATUS" = "healthy" ] && break; \
+		sleep 2; \
+	done
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  Auxin Automata demo stack is up!"
+	@echo ""
+	@echo "  Dashboard   →  http://localhost:3000"
+	@echo "  Grafana     →  http://localhost:3001"
+	@echo "  Prometheus  →  http://localhost:9091"
+	@echo "  Bridge /healthz → http://localhost:8767/healthz"
+	@echo "  Bridge metrics  → http://localhost:9090/metrics"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+demo-down:
+	docker compose -f docker-compose.demo.yml down --volumes
 
 # ── Clean ────────────────────────────────────────────────────────────────────
 clean:

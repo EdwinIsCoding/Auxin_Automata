@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from auxin_sdk.schema import TelemetryFrame
-
 
 # ── CLI options ───────────────────────────────────────────────────────────────
 
@@ -21,9 +20,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     if not config.getoption("--run-network"):
         skip = pytest.mark.skip(reason="pass --run-network to run network tests")
         for item in items:
@@ -43,7 +40,7 @@ def canonical_frame() -> TelemetryFrame:
     any field value without updating that pinned constant.
     """
     return TelemetryFrame(
-        timestamp=datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC),
         joint_positions=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
         joint_velocities=[0.01, 0.02, 0.03, 0.04, 0.05, 0.06],
         joint_torques=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],

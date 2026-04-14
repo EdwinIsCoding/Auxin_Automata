@@ -24,6 +24,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .scene import RobotScene
+    from .trajectory import PickAndPlace
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -112,8 +117,8 @@ def main() -> None:
 
 
 def _run_video(
-    scene: "RobotScene",
-    trajectory: "PickAndPlace",
+    scene: RobotScene,
+    trajectory: PickAndPlace,
     args: argparse.Namespace,
     sim_steps_per_frame: int,
 ) -> None:
@@ -131,8 +136,8 @@ def _run_video(
 
 
 def _run_ws(
-    scene: "RobotScene",
-    trajectory: "PickAndPlace",
+    scene: RobotScene,
+    trajectory: PickAndPlace,
     args: argparse.Namespace,
     sim_steps_per_frame: int,
 ) -> None:

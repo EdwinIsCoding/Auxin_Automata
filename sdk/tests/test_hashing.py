@@ -7,8 +7,8 @@ import json
 from auxin_sdk.hashing import canonical_json, sha256_hex
 from auxin_sdk.schema import TelemetryFrame
 
-
 # ── canonical_json ────────────────────────────────────────────────────────────
+
 
 def test_canonical_json_returns_string(canonical_frame: TelemetryFrame) -> None:
     result = canonical_json(canonical_frame)
@@ -98,9 +98,7 @@ def test_sha256_hex_determinism_after_round_trip(canonical_frame: TelemetryFrame
     can be independently verified by anyone who re-serialises the frame.
     """
     h1 = sha256_hex(canonical_frame)
-    reconstructed = TelemetryFrame.model_validate(
-        json.loads(canonical_json(canonical_frame))
-    )
+    reconstructed = TelemetryFrame.model_validate(json.loads(canonical_json(canonical_frame)))
     h2 = sha256_hex(reconstructed)
     assert h1 == h2, "hash must survive a canonical-JSON round-trip"
 

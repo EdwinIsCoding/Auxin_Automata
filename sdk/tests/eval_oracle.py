@@ -17,9 +17,7 @@ Usage
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 
@@ -27,14 +25,13 @@ from auxin_sdk.fixtures import all_fixture_images
 from auxin_sdk.oracle import OracleDecision, SafetyOracle
 from auxin_sdk.schema import TelemetryFrame
 
-
 # ── Fixtures / helpers ────────────────────────────────────────────────────────
 
 
 def _safe_frame() -> TelemetryFrame:
     """Nominal telemetry — all torques well below the 80 N·m threshold."""
     return TelemetryFrame(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         joint_positions=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
         joint_velocities=[0.01] * 6,
         joint_torques=[5.0, 6.0, 7.0, 5.5, 4.8, 6.2],
@@ -46,7 +43,7 @@ def _safe_frame() -> TelemetryFrame:
 def _unsafe_frame_high_torque() -> TelemetryFrame:
     """Telemetry with a torque spike — should be denied regardless of image."""
     return TelemetryFrame(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         joint_positions=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
         joint_velocities=[0.01] * 6,
         joint_torques=[95.0, 6.0, 7.0, 5.5, 4.8, 6.2],  # joint 0 spiked
@@ -103,8 +100,7 @@ async def test_oracle_image_accuracy_90pct() -> None:
     for r in results:
         mark = "✓" if r["correct"] else "✗"
         print(
-            f"{r['image']:<22} {r['label']:<9} {str(r['expected']):<10} "
-            f"{str(r['got']):<7} {mark}"
+            f"{r['image']:<22} {r['label']:<9} {str(r['expected']):<10} {str(r['got']):<7} {mark}"
         )
     print(f"\nAccuracy: {correct_count}/{len(results)} = {accuracy:.1%}")
 
@@ -112,8 +108,7 @@ async def test_oracle_image_accuracy_90pct() -> None:
         f"Oracle accuracy {accuracy:.1%} is below the 90% threshold.\n"
         f"Failures:\n"
         + "\n".join(
-            f"  {r['image']}: expected {r['expected']}, got {r['got']} "
-            f"(reason: {r['reason']})"
+            f"  {r['image']}: expected {r['expected']}, got {r['got']} (reason: {r['reason']})"
             for r in results
             if not r["correct"]
         )
@@ -167,7 +162,5 @@ async def test_oracle_completes_within_deadline() -> None:
         decision = await oracle.check(_safe_frame(), image_path)
         elapsed = time.perf_counter() - start
 
-        assert elapsed < 5.0, (
-            f"{image_path.name}: call took {elapsed:.2f}s — exceeded 5s budget"
-        )
+        assert elapsed < 5.0, f"{image_path.name}: call took {elapsed:.2f}s — exceeded 5s budget"
         assert isinstance(decision, OracleDecision)

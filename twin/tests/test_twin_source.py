@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import math
 
-import pytest
 
 from auxin_sdk.schema import TelemetryFrame
 from twin import TwinSource

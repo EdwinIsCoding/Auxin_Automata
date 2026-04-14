@@ -43,6 +43,8 @@ import aiohttp
 import aiohttp.web
 import httpx
 import structlog
+from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import start_http_server as _prom_start
 
 from .fixtures import sample_workspace_image
 from .hashing import sha256_hex
@@ -55,11 +57,39 @@ from .wallet import HardwareWallet
 
 log = structlog.get_logger(__name__)
 
+# ── Prometheus metrics ────────────────────────────────────────────────────────
+# Defined at module level so they are singletons across the process lifetime.
+
+_TX_TOTAL = Counter(
+    "auxin_tx_submitted_total",
+    "Solana transactions submitted by the bridge",
+    ["kind", "status"],
+)
+_ANOMALIES_TOTAL = Counter(
+    "auxin_anomalies_total",
+    "Telemetry frames flagged as anomalies",
+)
+_ORACLE_LATENCY = Histogram(
+    "auxin_oracle_latency_seconds",
+    "Gemini SafetyOracle check round-trip latency",
+    buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0],
+)
+_SOLANA_SUBMIT_LATENCY = Histogram(
+    "auxin_solana_submit_latency_seconds",
+    "Solana transaction submission latency (sign + confirm)",
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0],
+)
+_QUEUE_DEPTH = Gauge(
+    "auxin_queue_depth",
+    "Current number of items waiting in a bridge queue",
+    ["queue"],
+)
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 PAYMENT_QUEUE_MAXSIZE = 50
-PAYMENT_AMOUNT_LAMPORTS = 5_000        # 0.000005 SOL per oracle-approved action
-COMPLIANCE_SEVERITY_ANOMALY = 2        # direct anomaly-flag path
+PAYMENT_AMOUNT_LAMPORTS = 5_000  # 0.000005 SOL per oracle-approved action
+COMPLIANCE_SEVERITY_ANOMALY = 2  # direct anomaly-flag path
 COMPLIANCE_SEVERITY_ORACLE_DENIED = 1  # oracle denial path
 REASON_CODE_ANOMALY = 0x0001
 REASON_CODE_ORACLE_DENIED = 0x0002
@@ -69,6 +99,7 @@ COMPLIANCE_DRAIN_TIMEOUT_S = 30.0
 
 
 # ── Internal task types ───────────────────────────────────────────────────────
+
 
 @dataclass
 class _ComplianceTask:
@@ -87,6 +118,7 @@ class _PaymentTask:
 
 # ── WebsocketBroadcaster ──────────────────────────────────────────────────────
 
+
 class WebsocketBroadcaster:
     """
     aiohttp WebSocket server on port 8766.
@@ -103,7 +135,7 @@ class WebsocketBroadcaster:
         self._runner: aiohttp.web.AppRunner | None = None
         self._site: aiohttp.web.TCPSite | None = None
 
-    async def start(self) -> None:
+    async def start(self) -> None:  # pragma: no cover
         app = aiohttp.web.Application()
         app.router.add_get("/ws", self._handle_ws)
         self._runner = aiohttp.web.AppRunner(app)
@@ -112,7 +144,7 @@ class WebsocketBroadcaster:
         await self._site.start()
         log.info("ws_broadcaster.started", host=self._host, port=self._port)
 
-    async def stop(self) -> None:
+    async def stop(self) -> None:  # pragma: no cover
         if self._runner is not None:
             await self._runner.cleanup()
             log.info("ws_broadcaster.stopped")
@@ -126,17 +158,17 @@ class WebsocketBroadcaster:
         for ws in list(self._connections):
             try:
                 await ws.send_str(text)
-            except Exception:
+            except Exception:  # pragma: no cover
                 dead.add(ws)
         self._connections -= dead
-        if dead:
+        if dead:  # pragma: no cover
             log.debug("ws_broadcaster.pruned", count=len(dead))
 
     @property
     def client_count(self) -> int:
         return len(self._connections)
 
-    async def _handle_ws(
+    async def _handle_ws(  # pragma: no cover
         self, request: aiohttp.web.Request
     ) -> aiohttp.web.WebSocketResponse:
         ws = aiohttp.web.WebSocketResponse(heartbeat=30.0)
@@ -155,6 +187,7 @@ class WebsocketBroadcaster:
 
 
 # ── Submission layer ──────────────────────────────────────────────────────────
+
 
 class _SubmissionLayer:
     """
@@ -310,6 +343,7 @@ class _SubmissionLayer:
 
 # ── Bridge ────────────────────────────────────────────────────────────────────
 
+
 class Bridge:
     """
     Long-running async process.  Wires together:
@@ -344,6 +378,7 @@ class Bridge:
         rpc_url: str = "",
         helius_api_key: str | None = None,
         healthz_port: int = 8767,
+        metrics_port: int = 9090,
     ) -> None:
         self.source = source
         self.oracle = oracle
@@ -353,6 +388,7 @@ class Bridge:
         self.owner_pubkey = owner_pubkey if owner_pubkey is not None else wallet.pubkey
         self.provider_pubkey = provider_pubkey
         self._healthz_port = healthz_port
+        self._metrics_port = metrics_port
 
         self._submission = _SubmissionLayer(program_client, rpc_url, helius_api_key)
 
@@ -393,6 +429,11 @@ class Bridge:
         self._running = True
         self._start_time = time.monotonic()
 
+        # Start Prometheus metrics HTTP server (background thread, non-blocking).
+        if self._metrics_port > 0:
+            _prom_start(self._metrics_port)
+            log.info("metrics.started", port=self._metrics_port)
+
         await self.ws_broadcaster.start()
         if self._healthz_port > 0:
             await self._start_healthz()
@@ -427,7 +468,7 @@ class Bridge:
                     timeout=COMPLIANCE_DRAIN_TIMEOUT_S,
                 )
                 log.info("bridge.compliance_queue_drained")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning(
                     "bridge.compliance_drain_timeout",
                     remaining=self._compliance_queue.qsize(),
@@ -456,13 +497,16 @@ class Bridge:
         self._frames_processed += 1
 
         # (a) Raw telemetry → dashboard
-        await self.ws_broadcaster.broadcast({
-            "type": "telemetry",
-            "data": frame.model_dump(mode="json"),
-        })
+        await self.ws_broadcaster.broadcast(
+            {
+                "type": "telemetry",
+                "data": frame.model_dump(mode="json"),
+            }
+        )
 
         # (b) Anomaly path — unconditional compliance
         if frame.anomaly_flags:
+            _ANOMALIES_TOTAL.inc()
             task = _ComplianceTask(
                 frame=frame,
                 telemetry_hash=sha256_hex(frame),
@@ -470,6 +514,7 @@ class Bridge:
                 reason_code=REASON_CODE_ANOMALY,
             )
             await self._compliance_queue.put(task)
+            _QUEUE_DEPTH.labels("compliance").set(self._compliance_queue.qsize())
             log.info(
                 "bridge.anomaly_enqueued",
                 flags=frame.anomaly_flags,
@@ -490,6 +535,7 @@ class Bridge:
             return
 
         await self._payment_queue.put(_PaymentTask(frame=frame))
+        _QUEUE_DEPTH.labels("payment").set(self._payment_queue.qsize())
 
     # ── Workers ───────────────────────────────────────────────────────────────
 
@@ -501,7 +547,9 @@ class Bridge:
         log.info("compliance_worker.started")
         while True:
             task: _ComplianceTask = await self._compliance_queue.get()
+            _QUEUE_DEPTH.labels("compliance").set(self._compliance_queue.qsize())
             try:
+                _t0 = time.monotonic()
                 sig = await self._submission.log_compliance(
                     hw_wallet=self.wallet,
                     owner_pubkey=self.owner_pubkey,
@@ -510,25 +558,30 @@ class Bridge:
                     reason_code=task.reason_code,
                     idempotency_key=task.idempotency_key,
                 )
+                _SOLANA_SUBMIT_LATENCY.observe(time.monotonic() - _t0)
                 if sig:
+                    _TX_TOTAL.labels(kind="compliance", status="ok").inc()
                     self._compliance_total += 1
                     self._last_successful_tx = {
                         "signature": sig,
                         "kind": "compliance",
                         "severity": task.severity,
                     }
-                    await self.ws_broadcaster.broadcast({
-                        "type": "compliance_event",
-                        "data": {
-                            "hash": task.telemetry_hash,
-                            "severity": task.severity,
-                            "reason_code": task.reason_code,
-                            "signature": sig,
-                            "flags": task.frame.anomaly_flags,
-                            "timestamp": task.frame.timestamp.isoformat(),
-                        },
-                    })
+                    await self.ws_broadcaster.broadcast(
+                        {
+                            "type": "compliance_event",
+                            "data": {
+                                "hash": task.telemetry_hash,
+                                "severity": task.severity,
+                                "reason_code": task.reason_code,
+                                "signature": sig,
+                                "flags": task.frame.anomaly_flags,
+                                "timestamp": task.frame.timestamp.isoformat(),
+                            },
+                        }
+                    )
             except Exception as exc:
+                _TX_TOTAL.labels(kind="compliance", status="error").inc()
                 log.error(
                     "compliance_worker.error",
                     error=str(exc),
@@ -546,10 +599,12 @@ class Bridge:
         log.info("payment_worker.started")
         while True:
             task: _PaymentTask = await self._payment_queue.get()
+            _QUEUE_DEPTH.labels("payment").set(self._payment_queue.qsize())
             try:
                 image_path, _ = sample_workspace_image()
                 decision: OracleDecision = await self.oracle.check(task.frame, image_path)
                 self._last_oracle_latency_ms = decision.latency_ms
+                _ORACLE_LATENCY.observe(decision.latency_ms / 1_000)
 
                 if decision.action_approved:
                     if self.provider_pubkey is None:
@@ -558,6 +613,7 @@ class Bridge:
                             reason="provider_pubkey not configured — skipping payment",
                         )
                     else:
+                        _t0 = time.monotonic()
                         sig = await self._submission.stream_payment(
                             hw_wallet=self.wallet,
                             owner_pubkey=self.owner_pubkey,
@@ -565,23 +621,29 @@ class Bridge:
                             amount_lamports=PAYMENT_AMOUNT_LAMPORTS,
                             idempotency_key=task.idempotency_key,
                         )
+                        _SOLANA_SUBMIT_LATENCY.observe(time.monotonic() - _t0)
                         if sig:
+                            _TX_TOTAL.labels(kind="payment", status="ok").inc()
                             self._payments_total += 1
                             self._last_successful_tx = {
                                 "signature": sig,
                                 "kind": "payment",
                                 "amount_lamports": PAYMENT_AMOUNT_LAMPORTS,
                             }
-                            await self.ws_broadcaster.broadcast({
-                                "type": "payment_event",
-                                "data": {
-                                    "signature": sig,
-                                    "amount_lamports": PAYMENT_AMOUNT_LAMPORTS,
-                                    "provider": str(self.provider_pubkey),
-                                    "timestamp": task.frame.timestamp.isoformat(),
-                                    "oracle_reason": decision.reason,
-                                },
-                            })
+                            await self.ws_broadcaster.broadcast(
+                                {
+                                    "type": "payment_event",
+                                    "data": {
+                                        "signature": sig,
+                                        "amount_lamports": PAYMENT_AMOUNT_LAMPORTS,
+                                        "provider": str(self.provider_pubkey),
+                                        "timestamp": task.frame.timestamp.isoformat(),
+                                        "oracle_reason": decision.reason,
+                                    },
+                                }
+                            )
+                        else:
+                            _TX_TOTAL.labels(kind="payment", status="duplicate").inc()
                 else:
                     # Oracle denial → compliance log (severity 1)
                     telemetry_hash = sha256_hex(task.frame)
@@ -592,6 +654,7 @@ class Bridge:
                         reason_code=REASON_CODE_ORACLE_DENIED,
                     )
                     await self._compliance_queue.put(compliance_task)
+                    _QUEUE_DEPTH.labels("compliance").set(self._compliance_queue.qsize())
                     log.info(
                         "payment_worker.oracle_denied",
                         reason=decision.reason,
@@ -600,13 +663,14 @@ class Bridge:
                     )
 
             except Exception as exc:
+                _TX_TOTAL.labels(kind="payment", status="error").inc()
                 log.error("payment_worker.error", error=str(exc))
             finally:
                 self._payment_queue.task_done()
 
     # ── Health endpoint ───────────────────────────────────────────────────────
 
-    async def _start_healthz(self, host: str = "0.0.0.0") -> None:
+    async def _start_healthz(self, host: str = "0.0.0.0") -> None:  # pragma: no cover
         app = aiohttp.web.Application()
         app.router.add_get("/healthz", self._healthz_handler)
         self._health_runner = aiohttp.web.AppRunner(app)
@@ -615,29 +679,31 @@ class Bridge:
         await self._health_site.start()
         log.info("healthz.started", host=host, port=self._healthz_port)
 
-    async def _stop_healthz(self) -> None:
+    async def _stop_healthz(self) -> None:  # pragma: no cover
         if self._health_runner is not None:
             await self._health_runner.cleanup()
             log.info("healthz.stopped")
 
-    async def _healthz_handler(
+    async def _healthz_handler(  # pragma: no cover
         self, request: aiohttp.web.Request
     ) -> aiohttp.web.Response:
-        return aiohttp.web.json_response({
-            "source_status": self._source_status,
-            "last_successful_tx": self._last_successful_tx,
-            "last_oracle_latency_ms": self._last_oracle_latency_ms,
-            "queue_depths": {
-                "compliance": self._compliance_queue.qsize(),
-                "payment": self._payment_queue.qsize(),
-            },
-            "uptime_seconds": round(time.monotonic() - self._start_time, 1),
-            "frames_processed": self._frames_processed,
-            "frames_dropped": self._frames_dropped,
-            "compliance_total": self._compliance_total,
-            "payments_total": self._payments_total,
-            "ws_clients": self.ws_broadcaster.client_count,
-        })
+        return aiohttp.web.json_response(
+            {
+                "source_status": self._source_status,
+                "last_successful_tx": self._last_successful_tx,
+                "last_oracle_latency_ms": self._last_oracle_latency_ms,
+                "queue_depths": {
+                    "compliance": self._compliance_queue.qsize(),
+                    "payment": self._payment_queue.qsize(),
+                },
+                "uptime_seconds": round(time.monotonic() - self._start_time, 1),
+                "frames_processed": self._frames_processed,
+                "frames_dropped": self._frames_dropped,
+                "compliance_total": self._compliance_total,
+                "payments_total": self._payments_total,
+                "ws_clients": self.ws_broadcaster.client_count,
+            }
+        )
 
     # ── Properties ────────────────────────────────────────────────────────────
 

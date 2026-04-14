@@ -6,15 +6,14 @@ No network access is needed; all tests run in the default suite.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from auxin_sdk.oracle import OracleDecision, SafetyOracle, _local_fallback_core
 from auxin_sdk.schema import TelemetryFrame
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,7 +23,7 @@ def _make_frame(
     anomaly_flags: list[str] | None = None,
 ) -> TelemetryFrame:
     return TelemetryFrame(
-        timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         joint_positions=[0.1] * 6,
         joint_velocities=[0.0] * 6,
         joint_torques=torques or [5.0] * 6,
@@ -257,9 +256,7 @@ async def test_oracle_falls_back_on_bad_json(tmp_path: Path) -> None:
 
     mock_response = MagicMock()
     mock_response.text = "this is not json {{{broken"
-    mock_response.usage_metadata = MagicMock(
-        prompt_token_count=10, candidates_token_count=5
-    )
+    mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5)
 
     mock_model = MagicMock()
     mock_model.generate_content_async = AsyncMock(return_value=mock_response)
@@ -306,6 +303,7 @@ async def test_oracle_logs_decision_event(tmp_path: Path, caplog: pytest.LogCapt
 
     # caplog captures stdlib log records; structlog emits via stdlib integration
     import logging
+
     import structlog
 
     structlog.reset_defaults()
@@ -384,9 +382,7 @@ async def test_oracle_retries_on_transient_error(tmp_path: Path) -> None:
             raise ConnectionError("transient error")
         mock_response = MagicMock()
         mock_response.text = json.dumps(_approve_payload())
-        mock_response.usage_metadata = MagicMock(
-            prompt_token_count=10, candidates_token_count=5
-        )
+        mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5)
         return mock_response
 
     mock_model = MagicMock()
