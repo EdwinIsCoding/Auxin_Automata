@@ -1,5 +1,6 @@
 """auxin-sdk — Agentic infrastructure SDK for autonomous hardware on Solana."""
 
+from .bridge import Bridge, WebsocketBroadcaster
 from .hashing import canonical_json, sha256_hex
 from .logging import bind_request_id, configure_structlog, get_logger
 from .oracle import OracleDecision, SafetyOracle
@@ -9,6 +10,8 @@ from .sources.mock import MockSource, ReplaySource
 from .wallet import HardwareWallet
 
 __all__ = [
+    "Bridge",
+    "WebsocketBroadcaster",
     "HardwareWallet",
     "TelemetryFrame",
     "TelemetrySource",
