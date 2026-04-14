@@ -1,0 +1,21 @@
+[package]
+name = "agentic-hardware-bridge"
+version = "0.1.0"
+description = "Auxin Automata M2M payment and compliance bridge on Solana"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "agentic_hardware_bridge"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+anchor-debug = ["anchor-lang/anchor-debug"]
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "1.0.0", features = ["init-if-needed"] }
