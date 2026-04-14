@@ -1,0 +1,15 @@
+# All files — both owners required by default
+* @EdwinIsCoding @tara-kas
+
+# SDK and Anchor programs — Edwin primary
+/sdk/ @EdwinIsCoding
+/programs/ @EdwinIsCoding
+
+# Dashboard and digital twin — Tara primary
+/dashboard/ @tara-kas
+/twin/ @tara-kas
+
+# Edge nodes — joint ownership (safety-critical)
+/edge/ @EdwinIsCoding @tara-kas
+
+# NOTE: Replace @tara-kas with Tara's actual GitHub username.

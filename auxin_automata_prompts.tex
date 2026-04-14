@@ -1,0 +1,384 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=0.5in}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage[listings,breakable,skins]{tcolorbox}
+\usepackage{listings}
+\pagenumbering{gobble}
+
+\definecolor{darkgray}{RGB}{40, 40, 40}
+\definecolor{promptbg}{RGB}{245, 245, 250}
+\definecolor{promptborder}{RGB}{100, 100, 200}
+
+\titleformat{\section}{\large\bfseries\color{darkgray}}{\thesection}{1em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+
+\lstdefinestyle{promptstyle}{
+    basicstyle=\small\ttfamily,
+    breaklines=true,
+    breakatwhitespace=false,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    upquote=true,
+    literate={`}{{\textasciigrave}}1
+}
+
+\newtcblisting{promptbox}{
+    listing only,
+    breakable,
+    enhanced,
+    colback=promptbg,
+    colframe=promptborder,
+    boxrule=0.5pt,
+    arc=4pt,
+    left=6pt, right=6pt, top=6pt, bottom=6pt,
+    listing options={style=promptstyle}
+}
+
+
+\title{\textbf{Prompt Engineering Playbook v2} \\ \large Auxin Automata --- LLM Architecture \& Code Generation}
+\author{Edwin Redhead \& Tara Kasayapanand}
+\date{Colosseum Frontier Hackathon Sprint}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Master prompts for generating the Auxin Automata MVP infrastructure. Each prompt is paired with the highest-performing model and IDE for the task. Prompts are written to enforce the SDK-first, agnosticism-by-code-shape architecture defined in the Technical Roadmap v2.
+\end{abstract}
+
+\vspace{1em}
+
+\section{Phase 0: Repository Bootstrap}
+
+\subsection*{0.1--0.6: Monorepo, CI, Devcontainer}
+\textbf{Tool:} Claude Code (terminal, repo root) \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: Bootstrapping the auxin-automata monorepo for a 5-week Solana hackathon (Colosseum Frontier). Two devs, parallel tracks. Python SDK + Anchor programs + Next.js dashboard + ROS2 edge.
+
+Task: Create the full repo skeleton.
+
+Requirements:
+1. Workspaces: /sdk (Python, uv-managed), /programs (Anchor), /edge (ROS2 Python nodes), /dashboard (Next.js 14 app router + TS strict + Tailwind), /twin (PyBullet), /docs, /scripts.
+2. Root files: README.md (architecture placeholder), LICENSE (Apache 2.0), .gitignore (Python + Node + Rust + Anchor + .env), CODEOWNERS, .editorconfig, Makefile with targets: bootstrap, lint, test, demo.
+3. .github/workflows/: ci.yml with parallel jobs for python-lint-test (ruff + pytest), anchor-build-test, dashboard-build-lint. Fail-fast matrix.
+4. .devcontainer/devcontainer.json pinning Python 3.11, Node 20, Rust stable, Solana CLI 1.18+, Anchor 0.30+.
+5. Pre-commit config with gitleaks, ruff, prettier.
+6. .env.example in each workspace with documented variables (no real secrets).
+7. PR template and issue templates (bug, feature) under .github/.
+
+Output as a tree first, then generate every file. Do not skip files.
+\end{promptbox}
+
+\subsection*{0.7: Competitive Scan (Colosseum Copilot)}
+\textbf{Tool:} Claude Code with Colosseum Copilot skill installed \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Vet this idea: Auxin Automata is an SDK + Solana program suite that gives physical hardware (robotic arms, drones, industrial machines) its own on-chain wallet, lets it autonomously stream M2M micropayments for AI inference and external compute, and hashes kinematic safety telemetry to Solana as an immutable compliance log. MVP target: a desktop robotic arm running ROS2 on a Jetson, paying Gemini for vision inference, and logging torque-anomaly events on Devnet.
+
+Run a deep dive. Specifically:
+1. Have any prior Colosseum hackathon teams (Renaissance, Radar, Breakout, Cypherpunk) shipped anything in the autonomous-hardware-wallet, M2M payments for compute, or on-chain robotic compliance space? Name them.
+2. Classify the gap (full / partial / false). If partial, on which axis (segment, UX, geographic, integration)?
+3. Funded competitors in DePIN + agentic payments + machine identity. Names, raise amounts, latest shipped product.
+4. Recommend a wedge: what's the most defensible narrow market we should anchor the pitch around (surgical robotics audit trails? warehouse automation insurance? drone airspace logging?).
+5. Cite every claim. If evidence floor isn't met, say so explicitly.
+
+Output as a structured report we can paste into the pitch deck appendix.
+\end{promptbox}
+
+\section{Phase 1: Foundation \& Mock Infrastructure}
+
+\subsection*{1A: SDK Core (\texttt{auxin-sdk})}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: Building auxin-sdk, the Python package that proves our hardware-agnostic architecture to Colosseum judges. The same SDK must drive a mock generator, a PyBullet digital twin, and a real ROS2 robot --- selected by an env var.
+
+Task: Scaffold the auxin-sdk package under /sdk.
+
+Requirements:
+1. pyproject.toml with uv, src/auxin_sdk/ layout, Python 3.11+. Deps: solders, solana, pydantic v2, structlog, anyio, httpx, google-generativeai, tenacity.
+2. auxin_sdk/wallet.py: HardwareWallet class wrapping solders Keypair. Methods: load_or_create(path), pubkey, sign_transaction(tx), get_balance(rpc_url), request_airdrop(rpc_url, sol). Async where it touches the network.
+3. auxin_sdk/schema.py: Pydantic v2 TelemetryFrame model with fields timestamp (datetime), joint_positions (list[float]), joint_velocities (list[float]), joint_torques (list[float]), end_effector_pose (dict), anomaly_flags (list[str]). Include model_config for JSON serialisation.
+4. auxin_sdk/hashing.py: canonical_json(frame) using sorted keys and fixed float repr; sha256_hex(frame). Include a determinism test fixture.
+5. auxin_sdk/sources/base.py: TelemetrySource ABC with `async def stream() -> AsyncIterator[TelemetryFrame]` and `async def close()`.
+6. auxin_sdk/logging.py: configure_structlog() emitting JSON with request_id contextvar.
+7. tests/ with pytest covering wallet round-trip, schema validation, hash determinism. Target 80% coverage.
+8. Add SDK to root Makefile lint/test targets.
+
+Do NOT implement concrete sources here --- they go in 1B/1C/2B. Just the contract.
+\end{promptbox}
+
+\subsection*{1B: Mock Telemetry Source}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: Extending auxin-sdk with a mock telemetry source that conforms to the TelemetrySource ABC defined in /sdk/src/auxin_sdk/sources/base.py.
+
+Task: Implement auxin_sdk/sources/mock.py.
+
+Requirements:
+1. MockSource(TelemetrySource) class. Constructor accepts: rate_hz (default 10), num_joints (default 6), anomaly_every (default 12, randomised +/-3), seed (optional int for reproducibility).
+2. stream() yields TelemetryFrame objects forever. Joint positions drift via per-joint sin/cos with phase offset + small Gaussian noise. Velocities are numerical derivative. Torques baseline + noise.
+3. Every anomaly_every frames, spike one random joint's torque to 95.0 and append "torque_spike" to anomaly_flags.
+4. Add a JSONL recorder (record_to(path)) and a ReplaySource(path) class for deterministic demo replays.
+5. Curate /sdk/fixtures/images/ with 20 placeholder image filenames (clear_01.jpg .. obstacle_10.jpg) and a labels.json mapping filename -> "clear"|"obstacle". Add a sampler function sample_workspace_image() returning (path, label).
+6. Tests: assert frames validate against schema, assert anomalies appear within expected window, assert ReplaySource reproduces a recorded session bit-identical.
+\end{promptbox}
+
+\subsection*{1C: Digital Twin Fallback}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Opus 4.6 (PyBullet specifics need deeper reasoning)
+
+\begin{promptbox}
+Context: Building the digital twin fallback for Auxin Automata. This is the insurance policy: if the physical robotic arm slips, the twin must carry the entire demo video. It must conform to the same TelemetrySource ABC as MockSource so the bridge code is identical.
+
+Task: Build /twin as a standalone module that exposes a TwinSource.
+
+Requirements:
+1. /twin/scene.py: PyBullet scene loader. Load Franka Panda URDF from pybullet_data, a table, and one obstacle box. Provide reset() and step() at 240 Hz internal sim rate.
+2. /twin/trajectory.py: Pre-scripted pick-and-place loop using PyBullet's calculateInverseKinematics. Loops indefinitely.
+3. /twin/source.py: TwinSource(TelemetrySource) class subclassing the SDK ABC. Internally runs the sim in a background task; stream() yields TelemetryFrames at 10 Hz built from getJointStates. Map PyBullet joint state to the schema fields exactly.
+4. /twin/render.py: Off-screen renderer producing (a) MP4 file via imageio + ffmpeg AND (b) an asyncio websocket server on ws://localhost:8765 streaming JPEG frames base64-encoded for the dashboard.
+5. /twin/__main__.py: CLI entrypoint `python -m twin --mode [video|ws|both]`.
+6. The bridge selects this source via AUXIN_SOURCE=twin --- do NOT special-case it in any downstream code.
+7. Tests: smoke test that 100 frames stream cleanly and validate against schema.
+
+Critical: keep the TwinSource interface byte-identical to MockSource and (eventually) ROS2Source. Agnosticism must show up in `git diff` as a one-line config change.
+\end{promptbox}
+
+\subsection*{1D: Gemini Safety Oracle}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Sonnet 4.6 (test the system prompt itself in Gemini's web UI first)
+
+\begin{promptbox}
+Context: Adding the Gemini-backed safety oracle to auxin-sdk. This is the AI decision layer that approves or denies robotic actions based on telemetry + workspace image.
+
+Task: Implement auxin_sdk/oracle.py.
+
+Requirements:
+1. SafetyOracle class. Constructor: api_key (from env GEMINI_API_KEY), model (default "gemini-2.0-flash"), timeout_s (default 2.0), torque_threshold (default 80.0).
+2. async def check(frame: TelemetryFrame, image_path: Path) -> OracleDecision. OracleDecision is a Pydantic model: action_approved (bool), reason (str), confidence (float), latency_ms (float), prompt_version (str), used_fallback (bool).
+3. Use Gemini's response_schema feature to enforce structured JSON output. Schema must match OracleDecision exactly minus latency_ms/used_fallback.
+4. System prompt loaded from /sdk/src/auxin_sdk/prompts/safety_oracle_v1.txt. Prompt instructs Gemini to act as an industrial safety oracle: deny if image shows an obstacle, deny if any torque > threshold, otherwise approve. Log the prompt version used.
+5. Retry with tenacity: 3 attempts, exponential backoff, only on transient errors.
+6. On total failure or timeout, fall back to local heuristic: deny if max(torques) > threshold OR image label (from fixtures/labels.json if available) == "obstacle". Set used_fallback=True. The demo must NEVER stall on a network blip.
+7. Cost/latency metrics: record token counts and latency to a structlog event "oracle.decision".
+8. Eval harness in tests/eval_oracle.py: run the oracle against all 20 fixture images with synthetic safe + unsafe telemetry, assert >=90% accuracy. CI runs this nightly only (it costs API credits).
+\end{promptbox}
+
+\section{Phase 2A: Blockchain (Solana / Anchor)}
+
+\subsection*{2A.1--2A.2: Anchor Workspace + PDA Design}
+\textbf{Tool:} Claude Code (terminal) \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: Scaffolding the Anchor workspace for Auxin Automata's M2M payment + compliance bridge on Solana Devnet. This program is consumed by a Python SDK (auxin-sdk) and a Next.js dashboard.
+
+Task: Create /programs/agentic_hardware_bridge as an Anchor 0.30+ workspace.
+
+Step 1 --- Design doc: Before writing Rust, output /programs/DESIGN.md describing the three PDAs:
+- HardwareAgent: seeds=[b"agent", owner_pubkey], fields: owner, hardware_pubkey, compute_budget_lamports, lamports_spent, providers (Vec<Pubkey>, max 8), created_at, bump.
+- ComputeProvider: seeds=[b"provider", provider_pubkey], fields: provider_pubkey, total_received, bump.
+- ComplianceLog: seeds=[b"log", agent_pubkey, slot.to_le_bytes()], fields: agent, hash (String, max 64), severity (u8), reason_code (u16), timestamp, bump.
+
+Step 2 --- Scaffold: anchor init agentic_hardware_bridge. Configure Anchor.toml for Devnet via env HELIUS_RPC_URL. lib.rs imports + declare_id placeholder. Modules: state.rs (PDA structs), errors.rs, instructions/ (one file per ix), events.rs.
+
+Step 3 --- Test harness: Set up TS tests with @coral-xyz/anchor, helper to create funded keypairs on localnet, helper to derive each PDA.
+
+Do NOT implement instruction logic yet --- just scaffolding, types, and the design doc. We'll fill instructions in 2A.3--2A.6.
+\end{promptbox}
+
+\subsection*{2A.3--2A.7: Instructions, Events, Errors}
+\textbf{Tool:} Claude Code \quad \textbf{Model:} Claude Opus 4.6
+
+\begin{promptbox}
+Context: Implementing the instruction set for agentic_hardware_bridge per /programs/DESIGN.md.
+
+Task: Write all four instructions, the events, and the error enum.
+
+Requirements:
+1. errors.rs: #[error_code] enum AuxinError with variants UnauthorizedSigner, BudgetExceeded, RateLimitExceeded, InvalidProvider, ProviderNotWhitelisted, HashTooLong, MaxProvidersReached.
+
+2. events.rs: ComputePaymentEvent { agent, provider, lamports, timestamp }, ComplianceEvent { agent, hash, severity, reason_code, timestamp }, AgentInitializedEvent, ProviderWhitelistUpdatedEvent.
+
+3. instructions/initialize_agent.rs: Creates HardwareAgent PDA. Args: hardware_pubkey, compute_budget_lamports. Constraints: owner is signer, init account.
+
+4. instructions/stream_compute_payment.rs: Args: lamports. Constraints: hardware_pubkey is signer (autonomous --- the hardware itself signs, not the owner), provider PDA in agent.providers. Logic: enforce per-tx cap (max 0.001 SOL), enforce rolling-window rate limit (max 100 tx per 60 slots --- store last_window_start_slot and window_count on the agent), check budget remaining, transfer lamports via system_program::transfer with PDA signer seeds, update lamports_spent, emit ComputePaymentEvent.
+
+5. instructions/log_compliance_event.rs: Args: hash (String, max 64 chars --- enforce), severity (u8, 0--3), reason_code (u16). Constraints: hardware_pubkey is signer. Logic: init ComplianceLog PDA, store fields, emit ComplianceEvent. Compliance logs can never be rate-limited or budget-blocked.
+
+6. instructions/update_provider_whitelist.rs: Args: provider, action (Add|Remove enum). Constraints: owner is signer. Enforce max 8 providers.
+
+7. TypeScript test suite covering: happy path for each ix, every error variant, multi-agent isolation (agent A cannot pay from agent B's budget), event listener verifying every emitted event field, rate limit boundary (101st tx in window fails, then passes after window rolls).
+
+Use the latest Anchor macro syntax. No deprecated patterns.
+\end{promptbox}
+
+\subsection*{2A.10--2A.12: Devnet Deploy, Client Gen, Security}
+\textbf{Tool:} Claude Code \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: agentic_hardware_bridge passes all localnet tests. Now we deploy to Devnet, generate clients, and run a security pass.
+
+Task:
+1. /scripts/deploy_devnet.sh: idempotent deploy. Reads HELIUS_RPC_URL and DEPLOYER_KEYPAIR_PATH from env. Builds with `anchor build`, deploys with `anchor deploy --provider.cluster devnet`, uploads IDL, writes program ID to /programs/deployed.json with cluster + timestamp. Re-running must not redeploy unless --force is passed.
+
+2. Post-deploy smoke test script (TypeScript): initialize a test agent, stream one payment, log one compliance event, assert all events fire. Outputs Explorer links.
+
+3. Python client generation: use anchorpy to generate /sdk/src/auxin_sdk/program/ from the IDL. Wrap it in a high-level AuxinProgramClient class with methods initialize_agent, stream_payment, log_compliance --- each accepting a HardwareWallet and returning the tx signature.
+
+4. Security pass checklist (output as /programs/SECURITY.md):
+   - Every instruction validates the correct signer (hardware vs owner).
+   - No CPI to untrusted programs.
+   - Integer arithmetic uses checked_add / checked_sub.
+   - All account constraints use has_one or seeds where appropriate.
+   - String length bounds enforced before storage.
+   - Run cargo-audit and paste results.
+   - Run cargo clippy --all-targets -- -D warnings.
+\end{promptbox}
+
+\section{Phase 2B: Edge Compute (Jetson / ROS2)}
+
+\subsection*{2B.5--2B.6: Telemetry Bridge \& Watchdog}
+\textbf{Tool:} Cursor IDE over SSH to Jetson \quad \textbf{Model:} Claude Opus 4.6
+
+\begin{promptbox}
+Context: ROS2 Humble on NVIDIA Jetson Orin Nano. A myCobot 280 publishes /joint_states. We need a bridge node that conforms to auxin-sdk's TelemetrySource ABC, plus an INDEPENDENT watchdog node that can halt the arm even if the network or Solana bridge dies.
+
+Task: Build two ROS2 Python nodes under /edge/auxin_edge/.
+
+Node 1 --- telemetry_bridge_node.py:
+1. Subscribe to /joint_states (sensor_msgs/JointState) with QoS BEST_EFFORT.
+2. Throttle: keep only the latest message, emit at 2 Hz via a timer.
+3. Convert to auxin_sdk.schema.TelemetryFrame (import from the installed SDK package).
+4. Push to an asyncio queue exposed by a ROS2Source(TelemetrySource) class also defined in this file. The bridge process imports ROS2Source and uses it identically to MockSource/TwinSource.
+5. Handle dropped messages: if no joint_states for >1s, log warning, push a frame with anomaly_flag "stale_telemetry".
+6. Graceful shutdown on SIGINT.
+
+Node 2 --- safety_watchdog_node.py:
+1. Subscribe to /joint_states at full rate.
+2. If max(abs(effort)) > 80.0 for 3 consecutive messages, call the /emergency_stop service (std_srvs/Trigger).
+3. Publishes its own /auxin/watchdog_status topic (heartbeat).
+4. Runs as a SEPARATE process under systemd. Must not import auxin-sdk, must not touch the network. Independence is the safety guarantee.
+
+Add /edge/launch/auxin_edge.launch.py launching both nodes, and /edge/systemd/ unit files for boot autostart.
+\end{promptbox}
+
+\section{Phase 2C: Dashboard (Next.js)}
+
+\subsection*{2C.1--2C.5: Mechafloral UI Scaffold}
+\textbf{Tool:} Cursor IDE (Composer) \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: Building the Auxin Automata dashboard --- the visual proxy judges use to understand the backend. Aesthetic is "Mechafloral": dark slate gray base, deep teal + Solana green accents, geometric clean layout, highly technical and venture-funded looking.
+
+Task: Scaffold the dashboard at /dashboard with mock data first. Live RPC hookup comes in a separate prompt (2C.6).
+
+Stack: Next.js 14 app router, TypeScript strict, Tailwind, shadcn/ui, lucide-react, Recharts, Zustand.
+
+Requirements:
+1. tailwind.config.ts: define design tokens. Background #0a0e1a, surface #131826, border #1f2937, accent-teal #14b8a6, accent-solana #14F195, text-primary #f1f5f9, text-muted #94a3b8. Inter font.
+2. app/layout.tsx: dark mode locked, Inter loaded, root container.
+3. app/page.tsx: header + three-column responsive grid (telemetry left, payments + compliance right column stacked, twin viewport spanning).
+4. components/Header.tsx: "Auxin Automata --- Agentic Infrastructure Node" title, truncated agent pubkey with copy button, pulsing green "Status: Live" indicator (lucide Activity icon).
+5. components/TelemetryCard.tsx: live joint angles + torques. Recharts sparklines per joint. Card border shifts to red on anomaly.
+6. components/PaymentTicker.tsx: terminal-style scrolling list. Each row: timestamp, lamports, provider pubkey (truncated), tx signature linking to explorer.solana.com/?cluster=devnet.
+7. components/ComplianceTable.tsx: shadcn Table. Columns: timestamp, severity badge (color-coded 0--3), reason code, hash (truncated, copy on click), tx link.
+8. components/TwinViewport.tsx: react-three-fiber canvas, OrbitControls, placeholder cube for now (real URDF in a follow-up).
+9. lib/store.ts: Zustand store with telemetry, payments, complianceLogs arrays + setters. Mock data in lib/mockData.ts feeds all four components on a setInterval.
+10. Every component handles loading, empty, and error states. No white screens.
+11. Vercel-ready: no env vars required for the mock build.
+\end{promptbox}
+
+\subsection*{2C.6: Live Solana Hookup (\texttt{useProgramEvents})}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: The dashboard mock UI is built. Now wire it to the deployed agentic_hardware_bridge program on Devnet, replacing mock data with real on-chain events.
+
+Task: Build a useProgramEvents hook and swap mock data for live data.
+
+Requirements:
+1. lib/solana.ts: Connection factory reading NEXT_PUBLIC_HELIUS_RPC_URL and NEXT_PUBLIC_PROGRAM_ID. Export PROGRAM_ID as PublicKey.
+2. lib/anchor.ts: Load the IDL (copied from /programs/target/idl/agentic_hardware_bridge.json into /dashboard/lib/idl/), construct an anchor Program instance with a read-only provider.
+3. hooks/useProgramEvents.ts: Custom hook accepting an event name. Uses program.addEventListener internally. Returns an array of typed events. Handles: reconnect on websocket drop (exponential backoff), dedup by tx signature, cleanup on unmount (program.removeEventListener), max buffer of 100 events.
+4. Update PaymentTicker to consume useProgramEvents("ComputePaymentEvent") and ComplianceTable to consume useProgramEvents("ComplianceEvent"). New events animate in from the top.
+5. Update TelemetryCard to subscribe to a websocket (NEXT_PUBLIC_BRIDGE_WS_URL) served by the Python bridge process --- this carries off-chain telemetry too high-frequency for Solana.
+6. Update TwinViewport to subscribe to ws://localhost:8765 (the PyBullet frame stream) when AUXIN_SOURCE=twin, otherwise render from joint_states pushed via the bridge ws.
+7. Connection status indicator in the Header reflects the actual ws state, not a static "Live".
+\end{promptbox}
+
+\section{Phase 3: Bridge Service \& Integration}
+
+\subsection*{3.1--3.5: The Bridge Process}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: The bridge is the long-running async Python process that ties everything together: telemetry source -> Gemini oracle -> Solana submission -> dashboard websocket. It must run identically against MockSource, TwinSource, and ROS2Source --- selected only by the AUXIN_SOURCE env var.
+
+Task: Build /sdk/src/auxin_sdk/bridge.py and a /sdk/scripts/run_bridge.py entrypoint.
+
+Requirements:
+1. Bridge class. Constructor takes: source (TelemetrySource), oracle (SafetyOracle), program_client (AuxinProgramClient), wallet (HardwareWallet), ws_broadcaster.
+2. async def run() main loop: async for frame in source.stream(): await self.process(frame). Cancellable.
+3. process(frame) logic:
+   a. Push frame to ws_broadcaster (dashboard live telemetry).
+   b. If frame has anomaly_flags: hash the frame, await program_client.log_compliance(...), broadcast result. Compliance is unconditional --- never gated on rate limits or budget.
+   c. Else: sample a workspace image, await oracle.check(frame, image). If approved: await program_client.stream_payment(small_amount). If denied: hash + log_compliance with severity 1.
+4. Submission layer wrapper around program_client: priority fee calculation (use Helius getPriorityFeeEstimate or fall back to a fixed micro-lamport value), blockhash refresh per tx, retry on BlockhashNotFound (max 3), idempotency keys to avoid double-submit on retry.
+5. Backpressure: if the submission queue exceeds 50 pending, drop frames whose only flag is informational. NEVER drop compliance events --- they have a separate unbounded queue.
+6. WebsocketBroadcaster class: aiohttp ws server on port 8766. Multiple dashboard clients can subscribe. Ping/pong keepalive.
+7. /healthz on port 8767 (aiohttp): JSON with source_status, last_successful_tx (signature + slot), last_oracle_latency_ms, queue_depths, uptime.
+8. run_bridge.py entrypoint: reads AUXIN_SOURCE, instantiates the right TelemetrySource, wires everything, runs until SIGINT. Structured logs throughout.
+9. End-to-end test in tests/test_bridge_e2e.py: spin up Bridge with MockSource against Solana Devnet (skipped in CI without DEVNET_KEYPAIR set), inject an anomaly, assert the matching ComplianceEvent appears on-chain within 5s.
+\end{promptbox}
+
+\section{Phase 4: Hardening, Observability, Submission}
+
+\subsection*{4.1--4.3: Observability \& Reproducibility}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: The full Auxin Automata stack works end-to-end on the developer machine. Now we make it reproducible for judges and observable for ourselves.
+
+Task:
+1. Prometheus metrics: instrument the bridge with prometheus_client. Counters: auxin_tx_submitted_total{kind, status}, auxin_anomalies_total. Histograms: auxin_oracle_latency_seconds, auxin_solana_submit_latency_seconds. Gauge: auxin_queue_depth{queue}. Expose on :9090.
+
+2. Sentry: add sentry_sdk init in run_bridge.py and Sentry React in /dashboard/app/layout.tsx. SENTRY_DSN from env, both optional.
+
+3. /grafana/auxin_dashboard.json: a checked-in Grafana dashboard JSON with panels for tx rate, oracle latency p50/p95, anomaly count, queue depth.
+
+4. docker-compose.demo.yml at repo root spinning up: bridge (twin mode), dashboard (Vercel build served via `next start`), prometheus, grafana, the twin's ws server. `make demo` runs `docker-compose -f docker-compose.demo.yml up --build` and prints the dashboard URL when ready. Cold start to all-services-healthy in <60s.
+
+5. /scripts/healthcheck.sh that hits /healthz on the bridge and curls a sample tx --- used by docker-compose healthcheck blocks.
+\end{promptbox}
+
+\subsection*{4.4--4.5: Documentation}
+\textbf{Tool:} Cursor IDE \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: Writing the README and architecture docs Colosseum judges will read.
+
+Task: Generate /README.md and per-workspace READMEs.
+
+Root README requirements:
+1. One-paragraph elevator pitch (Auxin Automata = autonomous hardware wallets + M2M payments + immutable compliance on Solana).
+2. Mermaid architecture diagram showing: Hardware/Twin -> auxin-sdk -> [Gemini Oracle, Anchor Programs on Devnet] -> Dashboard. Arrows labelled with data types.
+3. Quickstart: `make demo` -> open localhost:3000. Should work in under 60s on a clean clone with only Docker installed.
+4. Deployed addresses table: program ID, sample agent pubkey, sample provider, with Solana Explorer links.
+5. Environment variables reference table.
+6. Repo layout tree (one-line per workspace).
+7. Troubleshooting: top 5 issues and fixes.
+8. Team section: Edwin + Tara, links, mention of Aegis at HackEurope and Superteam Ireland outreach.
+9. License (Apache 2.0) and contribution note.
+
+Per-workspace READMEs (/sdk, /programs, /edge, /dashboard, /twin): each gets purpose, install, test, run, and how it fits into the bigger picture (with a link back to root).
+
+Tone: technical, confident, no marketing fluff. Judges are engineers and investors --- write for both.
+\end{promptbox}
+
+\end{document}

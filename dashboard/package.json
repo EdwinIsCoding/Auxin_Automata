@@ -1,0 +1,40 @@
+{
+  "name": "auxin-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@solana/web3.js": "^1.95.3",
+    "@coral-xyz/anchor": "^0.30.1",
+    "zustand": "^4.5.4",
+    "recharts": "^2.12.7",
+    "lucide-react": "^0.400.0",
+    "@react-three/fiber": "^8.17.5",
+    "@react-three/drei": "^9.109.0",
+    "three": "^0.166.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3",
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.166.0",
+    "tailwindcss": "^3.4.6",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.5.0"
+}

@@ -1,0 +1,83 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.pyo
+
+# uv
+uv.lock
+# keep sdk/uv.lock and twin/uv.lock — they ARE committed
+
+# ── Node ─────────────────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.pnpm-debug.log*
+
+# ── Rust / Anchor ────────────────────────────────────────────────────────────
+target/
+**/*.rs.bk
+.anchor/
+# Keep deployed.json (pinned program IDs)
+!programs/deployed.json
+
+# ── Solana ───────────────────────────────────────────────────────────────────
+test-ledger/
+*.so.deploy
+# Keypairs — never commit private keys
+*.json.bak
+
+# ── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+# Keep .env.example files
+!**/.env.example
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ───────────────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+# Keep devcontainer config
+!.devcontainer/
+
+# ── LaTeX build artefacts ────────────────────────────────────────────────────
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.synctex.gz
+*.pdf
+*.listing
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.lock
+!pnpm-lock.yaml
+!Cargo.lock
