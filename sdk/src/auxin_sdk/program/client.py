@@ -53,10 +53,12 @@ from pathlib import Path
 import structlog
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
+from solana.rpc.types import TxOpts
 from solders.hash import Hash
 from solders.instruction import AccountMeta, Instruction
 from solders.message import MessageV0
 from solders.pubkey import Pubkey
+from solders.signature import Signature
 from solders.system_program import ID as SYS_PROGRAM_ID
 from solders.transaction import VersionedTransaction
 
@@ -225,12 +227,15 @@ class AuxinProgramClient:
 
         resp = await self._rpc.send_transaction(
             tx,
-            opts={"skip_preflight": False, "preflight_commitment": Confirmed},
+            opts=TxOpts(
+                skip_preflight=False, preflight_commitment=Confirmed, skip_confirmation=True
+            ),
         )
-        sig = str(resp.value)
+        sig_obj: Signature = resp.value
+        sig = str(sig_obj)
 
         # Confirm
-        await self._rpc.confirm_transaction(sig, commitment=Confirmed)
+        await self._rpc.confirm_transaction(sig_obj, commitment=Confirmed)
         log.info(
             "program.tx_confirmed",
             signature=sig,

@@ -20,7 +20,7 @@ RUN uv pip install --system \
     imageio \
     "imageio-ffmpeg" \
     pillow && \
-    uv pip install --system -e /app/sdk --no-deps && \
+    uv pip install --system -e /app/sdk && \
     uv pip install --system -e /app/twin --no-deps
 
 EXPOSE 8765

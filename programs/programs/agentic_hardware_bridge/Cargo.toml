@@ -4,6 +4,14 @@ version = "0.1.0"
 description = "Auxin Automata M2M payment and compliance bridge on Solana"
 edition = "2021"
 
+# Suppress lints from Anchor/Solana macro-generated code (not our code).
+[lints.rust]
+unexpected_cfgs = "allow"
+unreachable_code = "allow"
+
+[lints.clippy]
+diverging_sub_expression = "allow"
+
 [lib]
 crate-type = ["cdylib", "lib"]
 name = "agentic_hardware_bridge"
