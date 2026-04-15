@@ -1,4 +1,4 @@
-.PHONY: bootstrap lint test demo demo-down clean
+.PHONY: bootstrap setup lint test demo demo-down clean
 
 # ── Bootstrap ────────────────────────────────────────────────────────────────
 # Install all workspace dependencies and pre-commit hooks.
@@ -9,6 +9,12 @@ bootstrap:
 	cd dashboard && pnpm install
 	pre-commit install
 	@echo "Bootstrap complete."
+
+# ── Devnet Setup ─────────────────────────────────────────────────────────────
+# One-time setup: generates keypairs, airdrops SOL, initialises agent PDA.
+# Safe to re-run — all steps are idempotent.
+setup:
+	cd sdk && uv run python ../scripts/setup_devnet.py
 
 # ── Lint ─────────────────────────────────────────────────────────────────────
 lint:
