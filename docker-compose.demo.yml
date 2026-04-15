@@ -53,9 +53,21 @@ services:
       TWIN_WS_URL: ws://twin:8765
       BRIDGE_WS_PORT: "8766"
       BRIDGE_HEALTHZ_PORT: "8767"
-      SENTRY_DSN: "${SENTRY_DSN:-}"
-      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      HELIUS_RPC_URL: "${HELIUS_RPC_URL:-https://devnet.helius-rpc.com/?api-key=REDACTED_KEY}"
       SOLANA_RPC_URL: "${SOLANA_RPC_URL:-https://api.devnet.solana.com}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      PROVIDER_PUBKEY: "${PROVIDER_PUBKEY:-}"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      HW_KEYPAIR_PATH: /keys/hardware.json
+      OWNER_KEYPAIR_PATH: /keys/owner.json
+      AUXIN_PROGRAM_ID: "${PROGRAM_ID:-7sUSbF9zDN9QKVwA2ZGskg9gFgvbMuQpCdpt3hfgf1Mm}"
+    volumes:
+      # Mount host keypairs read-only so the bridge can sign Solana transactions.
+      # Create these with: solana-keygen new -o ~/.config/auxin/hardware.json
+      - "${HW_KEYPAIR_PATH:-${HOME}/.config/auxin/hardware.json}:/keys/hardware.json:ro"
+      - "${OWNER_KEYPAIR_PATH:-${HOME}/.config/auxin/owner.json}:/keys/owner.json:ro"
+    env_file:
+      - ./sdk/.env
     depends_on:
       twin:
         condition: service_healthy

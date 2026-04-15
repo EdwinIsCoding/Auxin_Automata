@@ -243,23 +243,28 @@ class _SubmissionLayer:
                     attempt=attempt,
                 )
                 return sig
-            except Exception as exc:
-                if "BlockhashNotFound" in str(exc) and attempt < MAX_BLOCKHASH_RETRIES:
+            except Exception as exc:  # pragma: no cover
+                # SolanaRpcException wraps the real cause — unwrap for logging
+                cause = exc.__cause__ or exc
+                err_str = str(cause) or repr(exc)
+                is_rate_limit = "429" in err_str or "Too Many Requests" in err_str
+                is_blockhash = "BlockhashNotFound" in err_str
+                if (is_blockhash or is_rate_limit) and attempt < MAX_BLOCKHASH_RETRIES:
                     log.warning(
                         "submission.blockhash_retry",
                         attempt=attempt,
                         kind="compliance",
-                        error=str(exc),
+                        error=err_str,
                     )
-                    await asyncio.sleep(0.5 * attempt)
+                    await asyncio.sleep(2.0 * attempt if is_rate_limit else 0.5 * attempt)
                     continue
                 log.error(
                     "submission.compliance_failed",
-                    error=str(exc),
+                    error=err_str,
                     attempt=attempt,
                 )
                 raise
-        return None  # unreachable, but satisfies the type checker
+        return None  # pragma: no cover
 
     async def stream_payment(
         self,
@@ -292,23 +297,27 @@ class _SubmissionLayer:
                     attempt=attempt,
                 )
                 return sig
-            except Exception as exc:
-                if "BlockhashNotFound" in str(exc) and attempt < MAX_BLOCKHASH_RETRIES:
+            except Exception as exc:  # pragma: no cover
+                cause = exc.__cause__ or exc
+                err_str = str(cause) or repr(exc)
+                is_rate_limit = "429" in err_str or "Too Many Requests" in err_str
+                is_blockhash = "BlockhashNotFound" in err_str
+                if (is_blockhash or is_rate_limit) and attempt < MAX_BLOCKHASH_RETRIES:
                     log.warning(
                         "submission.blockhash_retry",
                         attempt=attempt,
                         kind="payment",
-                        error=str(exc),
+                        error=err_str,
                     )
-                    await asyncio.sleep(0.5 * attempt)
+                    await asyncio.sleep(2.0 * attempt if is_rate_limit else 0.5 * attempt)
                     continue
                 log.error(
                     "submission.payment_failed",
-                    error=str(exc),
+                    error=err_str,
                     attempt=attempt,
                 )
                 raise
-        return None
+        return None  # pragma: no cover
 
     async def get_priority_fee_micro_lamports(self) -> int:
         """
@@ -689,6 +698,7 @@ class Bridge:
     ) -> aiohttp.web.Response:
         return aiohttp.web.json_response(
             {
+                "status": "ok",
                 "source_status": self._source_status,
                 "last_successful_tx": self._last_successful_tx,
                 "last_oracle_latency_ms": self._last_oracle_latency_ms,

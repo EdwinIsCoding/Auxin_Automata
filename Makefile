@@ -18,11 +18,11 @@ lint:
 
 # ── Test ─────────────────────────────────────────────────────────────────────
 test:
-	cd sdk && uv run pytest --cov=auxin_sdk --cov-fail-under=80
-	cd twin && uv run pytest
+	cd sdk && uv run python -m pytest --cov=src --cov-fail-under=80
+	cd twin && uv run python -m pytest
 	cd dashboard && pnpm test --if-present
-	@# Anchor tests run only when programs/ workspace is initialised (Phase 2A)
-	@[ -f programs/Anchor.toml ] && (cd programs && anchor test) || echo "Skipping anchor test (Phase 2A not yet started)"
+	@# Anchor tests require a running solana-test-validator (start with: solana-test-validator --reset --quiet &)
+	@[ -f programs/Anchor.toml ] && (cd programs && anchor test --skip-local-validator) || echo "Skipping anchor test (Anchor.toml not found)"
 
 # ── Demo ─────────────────────────────────────────────────────────────────────
 # Spins up the full twin-mode stack via docker-compose.

@@ -4,6 +4,11 @@ members = [
 ]
 resolver = "2"
 
+# Suppress unexpected_cfg warnings that come from Solana/Anchor macro-generated code.
+# These are framework-level cfgs (custom-heap, custom-panic, solana) not controlled by our code.
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values(any()))'] }
+
 [profile.release]
 overflow-checks = true
 lto = "fat"
