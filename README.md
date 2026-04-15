@@ -292,12 +292,10 @@ Or run `make bootstrap` which handles this automatically.
 ## Team
 
 **Edwin Redhead** — [GitHub @EdwinIsCoding](https://github.com/EdwinIsCoding)
-Primary: `/sdk`, `/programs`. Built Aegis (AI legal compliance) at HackEurope. Active in Superteam Ireland.
 
 **Tara Kasayapanand** — [GitHub @tara-kas](https://github.com/tara-kas)
-Primary: `/dashboard`, `/twin`. Joint ownership of `/edge` and root infrastructure.
 
-Pursuing the Superteam Ireland hardware grant for Track B: NVIDIA Jetson Orin Nano + physical arm. The digital twin is production-ready and carries the full demo until hardware ships.
+The digital twin is production-ready and carries the full demo until hardware ships.
 
 ---
 
