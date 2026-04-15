@@ -83,8 +83,13 @@ cd auxin-automata
 # Fill in HELIUS_RPC_URL and GEMINI_API_KEY at minimum
 cp sdk/.env.example sdk/.env
 
+# First time only — generates keypairs, airdrops SOL, initialises on-chain state
+make setup
+
 make demo
 ```
+
+> **`make setup` is idempotent** — safe to re-run. It generates `~/.config/auxin/hardware.json` and `owner.json` if they don't exist, airdrops 2 SOL to each wallet on Devnet (skipped if balance ≥ 1 SOL), initialises the HardwareAgent PDA, and whitelists the hardware wallet as a provider. Without this step the bridge will fail to start on a fresh machine.
 
 Services started automatically: twin ws server → bridge (twin mode) → dashboard → Prometheus → Grafana. Endpoints printed when healthy:
 
@@ -224,7 +229,7 @@ auxin-automata/
 ├── docs/         Architecture docs
 ├── scripts/      Deploy, healthcheck, smoke test
 ├── docker-compose.demo.yml  Full 5-service demo stack
-└── Makefile      bootstrap / lint / test / demo / demo-down
+└── Makefile      bootstrap / setup / lint / test / demo / demo-down
 ```
 
 ---
