@@ -30,8 +30,8 @@ export function SystemBloomCard() {
   }, [telemetry, payments, complianceLogs]);
 
   return (
-    <section className="card-surface relative h-full overflow-visible px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
+    <section className="card-surface relative h-full overflow-visible px-3.5 py-2.5">
+      <div className="mb-1.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Leaf className="h-4 w-4" style={{ color: "#14F195" }} />
           <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-gradient-purple-green">
@@ -67,17 +67,17 @@ export function SystemBloomCard() {
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-1.5">
         {[
           { label: "motion", value: motionScore, color: "#14b8a6" },
           { label: "flow", value: payFlow, color: "#14F195" },
           { label: "safety", value: safetyBloom, color: "#A855F7" },
         ].map((metric) => (
-          <div key={metric.label} className="rounded-xl border px-2 py-1.5" style={{ borderColor: `${metric.color}33` }}>
-            <p className="mb-1 text-[9px] uppercase tracking-[0.16em]" style={{ color: "#64748b" }}>
+          <div key={metric.label} className="rounded-lg border px-2 py-1" style={{ borderColor: `${metric.color}33` }}>
+            <p className="mb-0.5 text-[8px] uppercase tracking-[0.14em]" style={{ color: "#64748b" }}>
               {metric.label}
             </p>
-            <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "rgba(51,65,85,0.5)" }}>
+            <div className="h-1 overflow-hidden rounded-full" style={{ backgroundColor: "rgba(51,65,85,0.5)" }}>
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{ width: `${metric.value}%`, backgroundColor: metric.color }}
