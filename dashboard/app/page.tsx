@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { startMockDataFeed } from "@/lib/mockData";
 import { useBridgeSocket } from "@/lib/useBridgeSocket";
 import { useProgramEvents } from "@/lib/useProgramEvents";
@@ -121,6 +121,7 @@ function BackgroundPattern() {
 }
 
 export default function DashboardPage() {
+  const [isTwinFocus, setIsTwinFocus] = useState(false);
   // Mock feed runs immediately so the dashboard is never empty.
   // When the bridge connects (Phase 3), real data overrides mock telemetry
   // and real events are prepended to payments + compliance lists.
@@ -136,6 +137,19 @@ export default function DashboardPage() {
   // On-chain Anchor event subscription — no-op if NEXT_PUBLIC_PROGRAM_ID
   // or NEXT_PUBLIC_HELIUS_RPC_URL is unset (safe in pre-deploy / mock mode).
   useProgramEvents();
+
+  useEffect(() => {
+    if (!isTwinFocus) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsTwinFocus(false);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isTwinFocus]);
 
   return (
     <div className="relative min-h-screen overflow-hidden lg:h-screen" style={{ backgroundColor: "#070B14" }}>
@@ -159,7 +173,11 @@ export default function DashboardPage() {
       <div className="relative flex min-h-screen flex-col overflow-hidden lg:h-full" style={{ zIndex: 2 }}>
         <Header />
 
-        <main className="relative flex-1 overflow-y-auto p-4 lg:overflow-hidden lg:p-5">
+        <main
+          className={`relative flex-1 overflow-y-auto p-4 transition-all duration-300 lg:overflow-hidden lg:p-5 ${
+            isTwinFocus ? "blur-md saturate-75" : ""
+          }`}
+        >
           <div className="grid min-h-0 grid-cols-1 gap-5 lg:h-full lg:grid-cols-[320px_1fr_400px]">
 
             {/* Left — joint telemetry */}
@@ -169,7 +187,7 @@ export default function DashboardPage() {
 
             {/* Centre — digital twin viewport */}
             <div className="flex h-full min-h-0 flex-col">
-              <TwinViewport />
+              <TwinViewport onToggleFocusMode={() => setIsTwinFocus(true)} />
             </div>
 
             {/* Right — bloom + payments + compliance */}
@@ -187,6 +205,15 @@ export default function DashboardPage() {
 
           </div>
         </main>
+
+        {isTwinFocus && (
+          <>
+            <div className="pointer-events-none fixed inset-0 bg-black/35" style={{ zIndex: 30 }} aria-hidden />
+            <div className="fixed inset-3 z-40 lg:inset-6">
+              <TwinViewport isFocusMode onToggleFocusMode={() => setIsTwinFocus(false)} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

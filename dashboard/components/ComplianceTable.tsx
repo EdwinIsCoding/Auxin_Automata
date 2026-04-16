@@ -138,6 +138,49 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
     : <ChevronDown className="h-3 w-3" style={{ color: "#A855F7" }} />;
 }
 
+function ComplianceTimeline({ logs }: { logs: ComplianceLog[] }) {
+  const recent = logs.slice(0, 24).reverse();
+
+  if (recent.length === 0) return null;
+
+  return (
+    <div
+      className="mx-3 mb-1 mt-2 rounded-xl border px-2 py-2"
+      style={{
+        borderColor: "rgba(168,85,247,0.20)",
+        background:
+          "linear-gradient(90deg, rgba(168,85,247,0.08) 0%, rgba(20,241,149,0.05) 100%)",
+      }}
+    >
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[9px] font-bold uppercase tracking-[0.16em]" style={{ color: "#A855F7" }}>
+          Severity Timeline
+        </span>
+        <span className="text-[9px] font-mono uppercase tracking-[0.12em]" style={{ color: "#64748b" }}>
+          last {recent.length} events
+        </span>
+      </div>
+      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${recent.length}, minmax(0, 1fr))` }}>
+        {recent.map((log) => {
+          const sev = SEVERITY_STYLES[log.severity];
+          return (
+            <div
+              key={log.id}
+              className="h-5 rounded-sm border"
+              title={`${new Date(log.timestamp).toISOString()} · ${sev.label} · ${log.reasonCode}`}
+              style={{
+                backgroundColor: sev.bg,
+                borderColor: sev.border,
+                boxShadow: log.severity === 3 ? "0 0 8px rgba(239,68,68,0.45)" : "none",
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ComplianceTable() {
   const logs = useAuxinStore((s) => s.complianceLogs);
   const isLoading = useAuxinStore((s) => s.isLoading);
@@ -227,6 +270,8 @@ export function ComplianceTable() {
           </span>
         </div>
       </div>
+
+      <ComplianceTimeline logs={logs} />
 
       {/* Table */}
       <div className="scroll-tech flex-1 overflow-y-auto">

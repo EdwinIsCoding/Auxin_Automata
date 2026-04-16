@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Leaf, Sparkles } from "lucide-react";
+import { Info, Leaf } from "lucide-react";
 import { useAuxinStore } from "@/lib/store";
 
 function clampPercent(value: number): number {
@@ -30,7 +30,7 @@ export function SystemBloomCard() {
   }, [telemetry, payments, complianceLogs]);
 
   return (
-    <section className="card-surface h-full overflow-hidden px-4 py-3">
+    <section className="card-surface relative h-full overflow-visible px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Leaf className="h-4 w-4" style={{ color: "#14F195" }} />
@@ -38,7 +38,34 @@ export function SystemBloomCard() {
             System Bloom
           </span>
         </div>
-        <Sparkles className="h-3.5 w-3.5" style={{ color: "#C084FC" }} />
+        <div className="group relative">
+          <button
+            type="button"
+            className="rounded-full p-1 transition-colors hover:bg-white/[0.06]"
+            style={{ color: "#C084FC" }}
+            aria-label="Explain system bloom signals"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+          <div
+            className="absolute right-0 top-7 z-50 w-80 rounded-xl border px-3 py-2.5 text-[11px] leading-relaxed opacity-0 shadow-lg transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+            style={{
+              borderColor: "rgba(168,85,247,0.34)",
+              backgroundColor: "rgba(10,14,26,0.78)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              color: "#cbd5e1",
+              transform: "translateY(4px)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.45), 0 0 18px rgba(168,85,247,0.22)",
+            }}
+          >
+            <span style={{ color: "#14b8a6" }}>Motion</span>: average joint torque load across active joints.
+            <br />
+            <span style={{ color: "#14F195" }}>Flow</span>: payment event activity observed in the last 60 seconds.
+            <br />
+            <span style={{ color: "#A855F7" }}>Safety</span>: inverse of current critical compliance count (higher is healthier).
+          </div>
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-2">
         {[
