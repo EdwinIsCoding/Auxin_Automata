@@ -51,7 +51,7 @@ function SeverityBadge({ severity }: { severity: 0 | 1 | 2 | 3 }) {
   const s = SEVERITY_STYLES[severity];
   return (
     <span
-      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-widest border"
+      className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em]"
       style={{ backgroundColor: s.bg, color: s.text, borderColor: s.border }}
     >
       {s.label}
@@ -72,7 +72,7 @@ function HashCell({ hash }: { hash: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="flex items-center gap-1 font-mono text-xs hover:opacity-80 transition-opacity"
+      className="flex items-center gap-1 font-mono text-[11px] hover:opacity-80 transition-opacity"
       title={hash}
     >
       <span style={{ color: "#C084FC" }}>{truncated}</span>
@@ -103,24 +103,24 @@ function LogRow({ log, index }: { log: ComplianceLog; index: number }) {
             : undefined,
       }}
     >
-      <td className="px-3 py-2 font-mono text-[11px]" style={{ color: "#3d4663" }}>
+      <td className="px-3 py-1 font-mono text-[10px]" style={{ color: "#3d4663" }}>
         {ts}
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-1">
         <SeverityBadge severity={log.severity} />
       </td>
-      <td className="px-3 py-2 font-mono text-[11px]" style={{ color: "#e2e8f0" }}>
+      <td className="px-3 py-1 font-mono text-[10px]" style={{ color: "#e2e8f0" }}>
         {log.reasonCode}
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-1">
         <HashCell hash={log.hash} />
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-1">
         <a
           href={`https://explorer.solana.com/tx/${log.txSignature}?cluster=devnet`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 font-mono text-[11px] hover:opacity-80 transition-opacity"
+          className="flex items-center gap-1 font-mono text-[10px] hover:opacity-80 transition-opacity"
           style={{ color: "#A855F7" }}
         >
           {truncatedSig}
@@ -139,20 +139,20 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 }
 
 function ComplianceTimeline({ logs }: { logs: ComplianceLog[] }) {
-  const recent = logs.slice(0, 24).reverse();
+  const recent = logs.slice(0, 20).reverse();
 
   if (recent.length === 0) return null;
 
   return (
     <div
-      className="mx-3 mb-1 mt-2 rounded-xl border px-2 py-2"
+      className="mx-3 mb-1 mt-2 rounded-xl border px-2 py-1.5"
       style={{
         borderColor: "rgba(168,85,247,0.20)",
         background:
           "linear-gradient(90deg, rgba(168,85,247,0.08) 0%, rgba(20,241,149,0.05) 100%)",
       }}
     >
-      <div className="mb-1.5 flex items-center justify-between">
+      <div className="mb-1 flex items-center justify-between">
         <span className="text-[9px] font-bold uppercase tracking-[0.16em]" style={{ color: "#A855F7" }}>
           Severity Timeline
         </span>
@@ -166,7 +166,7 @@ function ComplianceTimeline({ logs }: { logs: ComplianceLog[] }) {
           return (
             <div
               key={log.id}
-              className="h-5 rounded-sm border"
+              className="h-3.5 rounded-sm border"
               title={`${new Date(log.timestamp).toISOString()} · ${sev.label} · ${log.reasonCode}`}
               style={{
                 backgroundColor: sev.bg,
@@ -275,7 +275,7 @@ export function ComplianceTable() {
 
       {/* Table */}
       <div className="scroll-tech flex-1 overflow-y-auto">
-        <table className="w-full text-left">
+        <table className="w-full border-collapse text-left">
           <thead
             className="sticky top-0"
             style={{
@@ -287,7 +287,7 @@ export function ComplianceTable() {
             <tr className="border-b" style={{ borderColor: "rgba(168,85,247,0.15)" }}>
               {/* Sortable: Timestamp */}
               <th
-                className="px-3 py-2 text-[10px] font-bold tracking-[0.18em] uppercase cursor-pointer select-none"
+              className="cursor-pointer select-none px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.16em]"
                 style={{ color: "#A855F7", opacity: sortKey === "timestamp" ? 1 : 0.7 }}
                 onClick={() => handleSort("timestamp")}
               >
@@ -298,7 +298,7 @@ export function ComplianceTable() {
               </th>
               {/* Sortable: Severity */}
               <th
-                className="px-3 py-2 text-[10px] font-bold tracking-[0.18em] uppercase cursor-pointer select-none"
+              className="cursor-pointer select-none px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.16em]"
                 style={{ color: "#A855F7", opacity: sortKey === "severity" ? 1 : 0.7 }}
                 onClick={() => handleSort("severity")}
               >
@@ -311,7 +311,7 @@ export function ComplianceTable() {
               {["Reason", "Hash", "Tx"].map((h) => (
                 <th
                   key={h}
-                  className="px-3 py-2 text-[10px] font-bold tracking-[0.18em] uppercase"
+                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.16em]"
                   style={{ color: "#A855F7", opacity: 0.7 }}
                 >
                   {h}
