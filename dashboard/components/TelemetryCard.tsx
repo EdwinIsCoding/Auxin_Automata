@@ -118,7 +118,7 @@ export function TelemetryCard() {
   if (error) {
     return (
       <div className="card-surface glow-red-card flex flex-col items-center justify-center gap-3 p-8 h-full">
-        <AlertTriangle className="h-8 w-8" style={{ color: "#ef4444" }} />
+        <AlertTriangle className="h-8 w-8 animate-pulse" style={{ color: "#ef4444" }} />
         <p className="text-sm tracking-wider" style={{ color: "#94a3b8" }}>
           Telemetry stream error
         </p>
@@ -177,7 +177,7 @@ export function TelemetryCard() {
       </div>
 
       {/* Joints */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide p-3 flex flex-col gap-1.5">
+      <div className="scroll-tech flex flex-1 flex-col gap-1.5 overflow-y-auto p-3">
         {telemetry.joints.map((joint, i) => (
           <JointRow
             key={joint.name}
