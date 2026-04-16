@@ -72,7 +72,7 @@ export function PaymentTicker() {
       </div>
 
       {/* Animated payment rows */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide font-mono text-xs">
+      <div className="scroll-tech flex-1 overflow-y-auto font-mono text-xs">
         <AnimatePresence initial={false}>
           {payments.map((p, i) => (
             <motion.div

@@ -9,6 +9,7 @@ import { TelemetryCard } from "@/components/TelemetryCard";
 import { PaymentTicker } from "@/components/PaymentTicker";
 import { ComplianceTable } from "@/components/ComplianceTable";
 import { TwinViewport } from "@/components/TwinViewport";
+import { SystemBloomCard } from "@/components/SystemBloomCard";
 
 const PETAL = "M 150,150 C 166,128 166,92 150,68 C 134,92 134,128 150,150";
 const ANGLES = [0, 60, 120, 180, 240, 300];
@@ -29,7 +30,7 @@ function BackgroundPattern() {
         width: "100vw",
         height: "100vh",
         zIndex: 1,
-        opacity: 0.48,
+        opacity: 0.5,
         pointerEvents: "none",
         mixBlendMode: "screen",
       }}
@@ -106,9 +107,15 @@ function BackgroundPattern() {
           {/* Bottom-right: flower */}
           <use href="#fl" x="85" y="85" width="70" height="70" />
         </pattern>
+
+        {/* ── Mecha-floral pattern ── */}
+        <pattern id="mechaFloral" patternUnits="userSpaceOnUse" width="200" height="200">
+          <circle cx="100" cy="100" r="80" fill="#14b8a6" />
+          <rect x="50" y="50" width="100" height="100" fill="#A855F7" />
+        </pattern>
       </defs>
 
-      <rect width="100%" height="100%" fill="url(#mf)" />
+      <rect width="100%" height="100%" fill="url(#mechaFloral)" />
     </svg>
   );
 }
@@ -131,7 +138,7 @@ export default function DashboardPage() {
   useProgramEvents();
 
   return (
-    <div className="relative flex flex-col min-h-screen" style={{ backgroundColor: "#070B14" }}>
+    <div className="relative min-h-screen overflow-hidden lg:h-screen" style={{ backgroundColor: "#070B14" }}>
 
       {/* ── Ambient bioluminescent blobs (z=0) ── */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }} aria-hidden>
@@ -149,28 +156,31 @@ export default function DashboardPage() {
       <BackgroundPattern />
 
       {/* ── App content (z=2, above pattern) ── */}
-      <div className="relative flex flex-col min-h-screen" style={{ zIndex: 2 }}>
+      <div className="relative flex min-h-screen flex-col overflow-hidden lg:h-full" style={{ zIndex: 2 }}>
         <Header />
 
-        <main className="relative flex-1 p-4 lg:p-5 overflow-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_400px] gap-5 h-full min-h-[calc(100vh-72px)]">
+        <main className="relative flex-1 overflow-y-auto p-4 lg:overflow-hidden lg:p-5">
+          <div className="grid min-h-0 grid-cols-1 gap-5 lg:h-full lg:grid-cols-[320px_1fr_400px]">
 
             {/* Left — joint telemetry */}
-            <div className="flex flex-col min-h-[500px] lg:min-h-0">
+            <div className="flex min-h-0 flex-col">
               <TelemetryCard />
             </div>
 
             {/* Centre — digital twin viewport */}
-            <div className="flex flex-col min-h-[400px] lg:min-h-0 h-full">
+            <div className="flex h-full min-h-0 flex-col">
               <TwinViewport />
             </div>
 
-            {/* Right — payments + compliance */}
-            <div className="flex flex-col gap-5 min-h-[700px] lg:min-h-0">
-              <div className="flex-1 min-h-[220px]">
+            {/* Right — bloom + payments + compliance */}
+            <div className="flex min-h-0 flex-col gap-5">
+              <div className="h-[110px] shrink-0">
+                <SystemBloomCard />
+              </div>
+              <div className="min-h-0 flex-1">
                 <PaymentTicker />
               </div>
-              <div className="flex-[2] min-h-[300px]">
+              <div className="min-h-0 flex-[1.35]">
                 <ComplianceTable />
               </div>
             </div>
