@@ -59,6 +59,31 @@
 }
 
 @layer utilities {
+  .scroll-tech {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.55) rgba(20, 184, 166, 0.12);
+  }
+
+  .scroll-tech::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-tech::-webkit-scrollbar-track {
+    background: rgba(20, 184, 166, 0.08);
+    border-radius: 999px;
+  }
+
+  .scroll-tech::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.72), rgba(20, 241, 149, 0.62));
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.5);
+  }
+
+  .scroll-tech::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(192, 132, 252, 0.85), rgba(52, 211, 153, 0.78));
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

@@ -24,8 +24,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn("dark", inter.variable)} suppressHydrationWarning>
       <body
-        className="min-h-screen mecha-grid bg-background font-sans text-text-primary antialiased"
-        style={{ backgroundColor: "#0a0e1a" }}
+        className="min-h-screen mecha-grid bg-gradient-to-br from-[#0a0e1a] via-[#131826] to-[#0a0e1a] font-sans text-text-primary antialiased"
+        style={{
+          backgroundImage: "url('/path-to-floral-pattern.svg')",
+          backgroundSize: "cover",
+          backgroundBlendMode: "overlay",
+        }}
       >
         <SentryProvider />
         {children}
