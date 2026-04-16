@@ -229,7 +229,7 @@ export function ComplianceTable() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
+      <div className="scroll-tech flex-1 overflow-y-auto">
         <table className="w-full text-left">
           <thead
             className="sticky top-0"
