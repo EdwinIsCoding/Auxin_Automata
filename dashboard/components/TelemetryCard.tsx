@@ -117,7 +117,7 @@ export function TelemetryCard() {
 
   if (error) {
     return (
-      <div className="card-surface glow-red-card flex flex-col items-center justify-center gap-3 p-8 h-full">
+      <div className="card-surface glow-red-card flex flex-col items-center justify-center gap-3 p-8">
         <AlertTriangle className="h-8 w-8 animate-pulse" style={{ color: "#ef4444" }} />
         <p className="text-sm tracking-wider" style={{ color: "#94a3b8" }}>
           Telemetry stream error
@@ -131,7 +131,7 @@ export function TelemetryCard() {
 
   if (isLoading || !telemetry) {
     return (
-      <div className="card-surface flex flex-col items-center justify-center gap-3 p-8 h-full">
+      <div className="card-surface flex flex-col items-center justify-center gap-3 p-8">
         <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#A855F7" }} />
         <p className="text-sm tracking-wider" style={{ color: "#64748b" }}>
           Connecting to telemetry source…
@@ -141,12 +141,18 @@ export function TelemetryCard() {
   }
 
   const tsStr = new Date(telemetry.timestamp).toISOString().slice(11, 23);
+  const approxRowHeightPx = 56;
+  const headerHeightPx = 56;
+  const bodyPaddingPx = 32;
+  const desiredHeightPx =
+    headerHeightPx + bodyPaddingPx + telemetry.joints.length * approxRowHeightPx;
 
   return (
     <div
-      className={`card-surface flex flex-col h-full overflow-hidden transition-all duration-500 ${
+      className={`card-surface flex max-h-full flex-col self-start overflow-hidden transition-all duration-500 ${
         telemetry.hasAnomaly ? "glow-red-card" : ""
       }`}
+      style={{ height: "fit-content", maxHeight: "100%", minHeight: 140 }}
     >
       {/* Card header */}
       <div className="card-header-purple flex items-center justify-between px-4 py-3 shrink-0">
@@ -177,7 +183,10 @@ export function TelemetryCard() {
       </div>
 
       {/* Joints */}
-      <div className="scroll-tech flex flex-1 flex-col gap-1.5 overflow-y-auto p-3">
+      <div
+        className="scroll-tech flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-3"
+        style={{ maxHeight: desiredHeightPx - headerHeightPx }}
+      >
         {telemetry.joints.map((joint, i) => (
           <JointRow
             key={joint.name}

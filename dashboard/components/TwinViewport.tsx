@@ -4,7 +4,7 @@ import { useRef, Suspense, useEffect, useState, useCallback } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Grid, Environment } from "@react-three/drei";
 import { useAuxinStore } from "@/lib/store";
-import { Cpu, Wifi, WifiOff } from "lucide-react";
+import { Cpu, Focus, Minimize2, Wifi, WifiOff } from "lucide-react";
 import type * as THREE from "three";
 
 // ── PyBullet JPEG stream config ───────────────────────────────────────────────
@@ -195,7 +195,13 @@ function SceneContent() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function TwinViewport() {
+export function TwinViewport({
+  isFocusMode = false,
+  onToggleFocusMode,
+}: {
+  isFocusMode?: boolean;
+  onToggleFocusMode?: () => void;
+}) {
   const telemetry  = useAuxinStore((s) => s.telemetry);
   const isLoading  = useAuxinStore((s) => s.isLoading);
   const hasAnomaly = telemetry?.hasAnomaly ?? false;
@@ -320,6 +326,23 @@ export function TwinViewport() {
               : "drag to orbit · joint angles from bridge ws"}
           </span>
         </div>
+
+        {onToggleFocusMode && (
+          <div className="absolute bottom-3 right-3">
+            <button
+              onClick={onToggleFocusMode}
+              className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.14em] transition-colors hover:bg-white/[0.06]"
+              style={{
+                color: "#C084FC",
+                borderColor: "rgba(168,85,247,0.30)",
+                backgroundColor: "rgba(10,14,26,0.76)",
+              }}
+            >
+              {isFocusMode ? <Minimize2 className="h-3 w-3" /> : <Focus className="h-3 w-3" />}
+              {isFocusMode ? "Exit Focus" : "Focus"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
