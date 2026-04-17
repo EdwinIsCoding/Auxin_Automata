@@ -51,6 +51,7 @@ class HardwareWallet:
         else:
             keypair = Keypair()
             path.write_text(json.dumps(list(bytes(keypair))))
+            path.chmod(0o600)  # owner read/write only — private key must not be world-readable
             log.info("wallet.created", pubkey=str(keypair.pubkey()), path=str(path))
 
         return cls(keypair)

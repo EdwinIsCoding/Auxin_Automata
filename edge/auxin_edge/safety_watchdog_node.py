@@ -59,6 +59,7 @@ class SafetyWatchdogNode(Node):  # type: ignore[misc]
         self._consecutive_required = _CONSECUTIVE_FRAMES
         self._over_count = 0
         self._estop_triggered = False
+        self._estop_retry_timer = None
 
         # ── Subscribe to /joint_states at full rate ──────────────────────────
         self._sub = self.create_subscription(
@@ -115,17 +116,25 @@ class SafetyWatchdogNode(Node):  # type: ignore[misc]
     # ── Emergency stop ───────────────────────────────────────────────────────
 
     def _trigger_estop(self, max_torque: float) -> None:
-        """Call /emergency_stop service.  Fire-and-forget async call."""
+        """Initiate e-stop. Retries every second until the service responds."""
         self._estop_triggered = True
         self.get_logger().fatal(
             f"E-STOP TRIGGERED — {max_torque:.1f} N*m exceeded {self._threshold} N*m "
             f"for {self._consecutive_required} consecutive frames"
         )
+        self._call_estop_service()
+
+    def _call_estop_service(self) -> None:
+        """Call /emergency_stop, retrying on a 1 s timer if the service is not yet ready."""
+        if self._estop_retry_timer is not None:
+            self._estop_retry_timer.cancel()
+            self._estop_retry_timer = None
 
         if not self._estop_client.service_is_ready():
             self.get_logger().error(
-                "/emergency_stop service not available — arm may not have stopped!"
+                "/emergency_stop service not available — retrying in 1 s"
             )
+            self._estop_retry_timer = self.create_timer(1.0, self._call_estop_service)
             return
 
         request = Trigger.Request()
