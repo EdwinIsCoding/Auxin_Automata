@@ -77,6 +77,11 @@ desktop.ini
 *.pdf
 *.listing
 
+# ── Grant / Research docs (private, not for public repo) ─────────────────────
+STIE_GRANT_APPLICATION.md
+STIE_GRANT_APPLICATION.tex
+AUXIN_AUTOMATA_DEEP_DIVE.md
+
 # ── Misc ─────────────────────────────────────────────────────────────────────
 *.lock
 !pnpm-lock.yaml
