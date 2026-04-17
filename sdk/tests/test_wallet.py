@@ -26,6 +26,14 @@ def test_load_or_create_new_keypair(tmp_path: Path) -> None:
     assert wallet.pubkey is not None
 
 
+def test_new_keypair_file_permissions(tmp_path: Path) -> None:
+    """Newly created keypair file must be owner read/write only (mode 0o600)."""
+    keypair_path = tmp_path / "hardware.json"
+    HardwareWallet.load_or_create(keypair_path)
+    mode = keypair_path.stat().st_mode & 0o777
+    assert mode == 0o600, f"expected 0o600, got {oct(mode)}"
+
+
 def test_load_or_create_existing_keypair_round_trip(tmp_path: Path) -> None:
     """Loading from an existing file reproduces the identical public key."""
     keypair_path = tmp_path / "hardware.json"

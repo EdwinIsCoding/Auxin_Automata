@@ -46,6 +46,7 @@ from __future__ import annotations
 import hashlib
 import json
 import struct
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -351,17 +352,20 @@ class AuxinProgramClient:
 
         agent_pda, _ = _find_agent_pda(self.program_id, owner_pubkey)
 
-        # Derive the compliance log PDA using the current slot
-        slot_resp = await self._rpc.get_slot(commitment=Confirmed)
-        slot = slot_resp.value
-        log_pda, _ = _find_compliance_log_pda(self.program_id, agent_pda, slot)
+        # Use a microsecond timestamp as a unique nonce for the PDA seed.
+        # The Rust handler accepts this field as `_slot: u64` (unused in the handler
+        # body) purely for PDA derivation, so any unique u64 is valid.  Using a
+        # timestamp avoids a get_slot() RPC round-trip and guarantees uniqueness
+        # across two anomalies that land in the same 400 ms Solana slot.
+        event_nonce = time.time_ns() // 1_000  # microseconds since epoch
+        log_pda, _ = _find_compliance_log_pda(self.program_id, agent_pda, event_nonce)
 
         data = (
             _DISC["log_compliance_event"]
             + _pack_string(telemetry_hash)
             + _pack_u8(severity)
             + _pack_u16(reason_code)
-            + struct.pack("<Q", slot)  # slot: u64 le — used as PDA seed
+            + struct.pack("<Q", event_nonce)  # u64 le — unique PDA seed
         )
 
         ix = Instruction(
