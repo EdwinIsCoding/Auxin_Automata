@@ -73,6 +73,7 @@ desktop.ini
 *.fdb_latexmk
 *.fls
 *.log
+*.out
 *.synctex.gz
 *.pdf
 *.listing
@@ -81,6 +82,7 @@ desktop.ini
 STIE_GRANT_APPLICATION.md
 STIE_GRANT_APPLICATION.tex
 AUXIN_AUTOMATA_DEEP_DIVE.md
+auxin_automata_grant_application.tex
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
 *.lock
