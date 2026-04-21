@@ -155,7 +155,7 @@ export function TelemetryCard() {
       style={{ height: "fit-content", maxHeight: "100%", minHeight: 140 }}
     >
       {/* Card header */}
-      <div className="card-header-purple flex items-center justify-between px-4 py-3 shrink-0">
+      <div className="card-header-purple flex items-center justify-between px-4 py-3 shrink-0 whitespace-nowrap">
         <div className="flex items-center gap-2">
           <Zap className="h-4 w-4" style={{ color: "#A855F7" }} />
           <span className="text-xs font-bold tracking-[0.22em] uppercase" style={{ color: "#C084FC" }}>
@@ -165,15 +165,15 @@ export function TelemetryCard() {
         <div className="flex items-center gap-2">
           {telemetry.hasAnomaly && (
             <span
-              className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full tracking-widest uppercase"
+              className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full p-0"
               style={{
                 backgroundColor: "rgba(239,68,68,0.12)",
                 color: "#ef4444",
                 border: "1px solid rgba(239,68,68,0.35)",
               }}
+              title={telemetry.anomalyJoint}
             >
-              <AlertTriangle className="h-3 w-3" />
-              {telemetry.anomalyJoint}
+              <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
             </span>
           )}
           <span className="text-[10px] font-mono tabular-nums" style={{ color: "#3d4663" }}>
