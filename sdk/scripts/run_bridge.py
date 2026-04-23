@@ -4,6 +4,17 @@
 Environment variables
 ─────────────────────
 AUXIN_SOURCE          mock | twin | ros2  (default: mock)
+AUXIN_PRIVACY         direct | cloak | magicblock | umbra  (default: direct)
+                        direct     — public SOL transfer via the Auxin Anchor program
+                        cloak      — private payment via cloak.ag ZK shield pool
+                        magicblock — private payment via MagicBlock Private Ephemeral Rollup
+                        umbra      — private payment via Umbra mixer pool (sidecar required)
+CLOAK_PROGRAM_ID      Cloak program address (default: mainnet/devnet canonical)
+CLOAK_RELAY_URL       Cloak relay service URL (default: SDK built-in)
+MAGICBLOCK_API_URL    MagicBlock API base URL (default: https://payments.magicblock.app)
+MAGICBLOCK_API_KEY    MagicBlock API key for authenticated requests (optional)
+MAGICBLOCK_CLUSTER    Solana cluster label forwarded to MagicBlock API (default: devnet)
+UMBRA_SIDECAR_URL     Umbra sidecar base URL (default: http://localhost:3002)
 HELIUS_RPC_URL        Helius or QuickNode RPC endpoint (preferred)
 SOLANA_RPC_URL        Fallback RPC if HELIUS_RPC_URL not set
 AUXIN_PROGRAM_ID      Optional — resolved from /programs/deployed.json if absent
@@ -44,6 +55,7 @@ if _sentry_dsn:
 from auxin_sdk.bridge import Bridge, WebsocketBroadcaster  # noqa: E402
 from auxin_sdk.logging import configure_structlog  # noqa: E402
 from auxin_sdk.oracle import SafetyOracle  # noqa: E402
+from auxin_sdk.privacy.base import PrivacyProvider  # noqa: E402
 from auxin_sdk.program.client import AuxinProgramClient  # noqa: E402
 from auxin_sdk.sources.base import TelemetrySource  # noqa: E402
 from auxin_sdk.wallet import HardwareWallet  # noqa: E402
@@ -89,6 +101,127 @@ def _build_source(source_name: str) -> TelemetrySource:
     raise ValueError(f"Unknown AUXIN_SOURCE={source_name!r}. Valid values: mock, twin, ros2")
 
 
+# ── Privacy provider factory — the ONLY place AUXIN_PRIVACY is read ──────────
+
+
+def _build_privacy_provider(
+    provider_name: str, program_client: AuxinProgramClient
+) -> PrivacyProvider:
+    """
+    Instantiate the payment privacy provider selected by AUXIN_PRIVACY.
+
+    This function is the single location in the entire codebase that branches
+    on provider type.  Bridge._payment_worker never checks which provider is
+    active — it only calls privacy_provider.send_payment().
+
+    Currently implemented
+    ---------------------
+    direct     — public SOL transfer via the Auxin Anchor program (default)
+    cloak      — private payment via cloak.ag ZK shield pool (requires Node >=20
+                 and ``pnpm install`` in ``sdk/src/auxin_sdk/privacy/cloak_bridge/``)
+    magicblock — private payment via MagicBlock Private Ephemeral Rollup REST API
+    umbra      — private payment via Umbra mixer pool (requires sidecar at
+                 ``/services/umbra-bridge/``; started by docker-compose)
+    """
+    name = provider_name.lower().strip()
+
+    if name == "direct":
+        from auxin_sdk.privacy.direct import DirectProvider
+
+        log.info("privacy_provider.selected", kind="direct")
+        return DirectProvider(program_client)
+
+    if name == "cloak":
+        from auxin_sdk.privacy.cloak import CloakProvider
+        from auxin_sdk.privacy.direct import DirectProvider
+
+        rpc_url = (
+            os.environ.get("HELIUS_RPC_URL")
+            or os.environ.get("SOLANA_RPC_URL")
+            or "https://api.devnet.solana.com"
+        )
+        cloak_program_id = os.environ.get("CLOAK_PROGRAM_ID")
+        relay_url = os.environ.get("CLOAK_RELAY_URL")
+
+        # DirectProvider as fallback — demo never stalls on privacy provider failure
+        fallback = DirectProvider(program_client)
+        log.info(
+            "privacy_provider.selected",
+            kind="cloak",
+            program_id=cloak_program_id or CloakProvider.DEFAULT_PROGRAM_ID,
+            relay_url=relay_url or "sdk_default",
+            fallback="direct",
+        )
+        return CloakProvider(
+            rpc_url,
+            fallback=fallback,
+            cloak_program_id=cloak_program_id,
+            relay_url=relay_url,
+        )
+
+    if name == "magicblock":
+        from auxin_sdk.privacy.direct import DirectProvider
+        from auxin_sdk.privacy.magicblock import MagicBlockProvider
+
+        rpc_url = (
+            os.environ.get("HELIUS_RPC_URL")
+            or os.environ.get("SOLANA_RPC_URL")
+            or "https://api.devnet.solana.com"
+        )
+        api_url = os.environ.get("MAGICBLOCK_API_URL")
+        api_key = os.environ.get("MAGICBLOCK_API_KEY")
+        cluster = os.environ.get("MAGICBLOCK_CLUSTER", "devnet")
+
+        fallback = DirectProvider(program_client)
+        log.info(
+            "privacy_provider.selected",
+            kind="magicblock",
+            api_url=api_url or "https://payments.magicblock.app",
+            cluster=cluster,
+            fallback="direct",
+        )
+        return MagicBlockProvider(
+            rpc_url,
+            api_url=api_url,
+            api_key=api_key,
+            cluster=cluster,
+            fallback=fallback,
+        )
+
+    if name == "umbra":
+        from auxin_sdk.privacy.direct import DirectProvider
+        from auxin_sdk.privacy.umbra import UmbraProvider
+
+        sidecar_url = os.environ.get("UMBRA_SIDECAR_URL")
+        fallback = DirectProvider(program_client)
+        log.info(
+            "privacy_provider.selected",
+            kind="umbra",
+            sidecar_url=sidecar_url or "http://localhost:3002",
+            fallback="direct",
+        )
+        provider = UmbraProvider(
+            sidecar_url,
+            fallback=fallback,
+        )
+
+        # Verify the sidecar is running before starting the bridge loop
+        import asyncio
+
+        if not asyncio.get_event_loop().run_until_complete(provider.health_check()):
+            log.warning(
+                "umbra_provider.sidecar_unreachable",
+                url=sidecar_url or "http://localhost:3002",
+                msg="Umbra sidecar not reachable — payments will fall back to DirectProvider",
+            )
+        return provider
+
+    raise ValueError(
+        f"Unknown AUXIN_PRIVACY={provider_name!r}. "
+        "Valid values: direct, cloak, magicblock, umbra"
+    )
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
@@ -97,6 +230,7 @@ async def main() -> None:
 
     # ── Config from env ───────────────────────────────────────────────────────
     source_name = os.environ.get("AUXIN_SOURCE", "mock")
+    privacy_name = os.environ.get("AUXIN_PRIVACY", "direct")
 
     rpc_url = (
         os.environ.get("HELIUS_RPC_URL")
@@ -141,6 +275,7 @@ async def main() -> None:
     log.info(
         "bridge.config",
         source=source_name,
+        privacy=privacy_name,
         rpc_url=rpc_url,
         ws_port=ws_port,
         healthz_port=healthz_port,
@@ -153,12 +288,17 @@ async def main() -> None:
         rpc_url=rpc_url,
         program_id=program_id,
     ) as program_client:
+        # Privacy provider is built inside the program_client context so that
+        # DirectProvider (and future providers) can hold a reference to it.
+        privacy_provider = _build_privacy_provider(privacy_name, program_client)
+
         bridge = Bridge(
             source=source,
             oracle=oracle,
             program_client=program_client,
             wallet=hw_wallet,
             ws_broadcaster=ws_broadcaster,
+            privacy_provider=privacy_provider,
             owner_pubkey=owner_wallet.pubkey,
             provider_pubkey=provider_pubkey,
             rpc_url=rpc_url,

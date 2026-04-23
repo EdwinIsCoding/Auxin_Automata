@@ -22,14 +22,21 @@ flowchart LR
     end
 
     subgraph SDK["auxin-sdk  /sdk"]
-        SRC["TelemetrySource ABC\nselected by AUXIN_SOURCE env var"]
+        SRC["TelemetrySource ABC\nAUXIN_SOURCE env var"]
         BRIDGE["Bridge\nasync pipeline"]
         ORACLE["Gemini Safety Oracle\ngemini-2.0-flash + local fallback"]
         PROM["Prometheus :9090\n5 metrics"]
     end
 
-    subgraph Chain["Solana Devnet  /programs"]
-        PROG["agentic_hardware_bridge\nAnchor program"]
+    subgraph Privacy["Privacy Layer  AUXIN_PRIVACY env var"]
+        DIRECT["DirectProvider\npublic SOL tx"]
+        CLOAK["CloakProvider\nZK shield pool\ncloak.ag"]
+        MB["MagicBlockProvider\nTEE rollup + AML screening\nmagicblock"]
+        UMBRA["UmbraProvider\nMerkle pool + ZK proofs\numbra  :3002"]
+    end
+
+    subgraph Chain["Solana  /programs"]
+        PROG["agentic_hardware_bridge\nAnchor program\nDevnet"]
     end
 
     subgraph Obs["Observability"]
@@ -39,7 +46,7 @@ flowchart LR
 
     subgraph UI["Dashboard  /dashboard  :3000"]
         TWIN_VP["TwinViewport"]
-        PAY["PaymentTicker"]
+        PAY["PaymentTicker\nlock icon when is_private"]
         COMP["ComplianceTable"]
     end
 
@@ -50,8 +57,12 @@ flowchart LR
     SRC -->|"TelemetryFrame stream"| BRIDGE
     BRIDGE -->|"frame + workspace JPEG"| ORACLE
     ORACLE -->|"OracleDecision\n{approved, reason, confidence_pct}"| BRIDGE
-    BRIDGE -->|"stream_payment tx\n(oracle-approved)"| PROG
-    BRIDGE -->|"log_compliance_event tx\n(anomaly / oracle-denied)"| PROG
+    BRIDGE -->|"send_payment()\noracle-approved"| Privacy
+    DIRECT -->|"stream_payment tx"| PROG
+    CLOAK -->|"ZK deposit tx"| PROG
+    MB -->|"unsigned tx → sign → submit"| PROG
+    UMBRA -->|"UTXO deposit tx"| PROG
+    BRIDGE -->|"log_compliance_event tx\nALWAYS public — bypasses privacy layer"| PROG
     BRIDGE -->|"telemetry JSON @ 10 Hz\nWS :8766"| UI
     TWIN -->|"JPEG frames base64\nWS :8765"| TWIN_VP
     PROG -->|"ComputePaymentEvent\nComplianceEvent\nonLogs subscription"| PAY
@@ -61,6 +72,30 @@ flowchart LR
     PROM --> PSERVER
     PSERVER --> GRAFANA
 ```
+
+---
+
+## Privacy Providers
+
+Payment privacy is controlled by a single environment variable — no code changes required:
+
+```bash
+AUXIN_PRIVACY=direct      # default — public SOL transfer, visible on-chain
+AUXIN_PRIVACY=cloak       # stealth addresses via cloak.ag ZK shield pool
+AUXIN_PRIVACY=magicblock  # TEE rollup via MagicBlock Private Ephemeral Rollups
+AUXIN_PRIVACY=umbra       # shielded pool via Umbra mixer (Merkle tree + ZK proofs)
+```
+
+Compliance events (`log_compliance_event`) are **always routed directly to the public chain** regardless of the privacy setting. Compliance hashes are the immutable public evidence that the system detected and recorded every safety anomaly — hiding them would defeat their purpose. Privacy applies only to the economic layer (micropayments), never the safety layer.
+
+| Provider | Privacy model | Compliance mechanism | Setup required |
+|---|---|---|---|
+| `direct` | None — sender → receiver link visible | — | None |
+| `cloak` | Stealth addresses via ZK UTXO shield pool | Viewing key for auditor selective disclosure | Node ≥20 + `pnpm install` in `sdk/src/auxin_sdk/privacy/cloak_bridge/` |
+| `magicblock` | TEE-based ephemeral rollup; crank settles batches | AML screening (Range) on every API call — no operator infra needed | `MAGICBLOCK_API_KEY` env var |
+| `umbra` | Unified mixer pool; Merkle tree + Groth16 ZK proofs; deposit unlinkable from withdrawal | Time-scoped Transaction Viewing Keys for auditor selective disclosure | Umbra sidecar (`docker-compose --profile umbra up umbra-bridge`) |
+
+See [`docs/privacy-overview.md`](docs/privacy-overview.md) for the full comparison and compliance architecture. Provider-specific docs: [Cloak](docs/privacy-cloak.md) · [MagicBlock](docs/privacy-magicblock.md) · [Umbra](docs/privacy-umbra.md).
 
 **Three pillars:**
 
@@ -166,6 +201,13 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 |---|---|---|---|
 | `HELIUS_RPC_URL` | yes | — | Helius / QuickNode RPC (HTTP or WSS) |
 | `AUXIN_SOURCE` | no | `mock` | `mock` \| `twin` \| `ros2` |
+| `AUXIN_PRIVACY` | no | `direct` | `direct` \| `cloak` \| `magicblock` \| `umbra` |
+| `CLOAK_PROGRAM_ID` | no | canonical | Cloak shield pool program address |
+| `CLOAK_RELAY_URL` | no | SDK default | Cloak relay service URL |
+| `MAGICBLOCK_API_URL` | no | `https://payments.magicblock.app` | MagicBlock API base URL |
+| `MAGICBLOCK_API_KEY` | no | — | MagicBlock API key |
+| `MAGICBLOCK_CLUSTER` | no | `devnet` | MagicBlock cluster label |
+| `UMBRA_SIDECAR_URL` | no | `http://localhost:3002` | Umbra sidecar base URL |
 | `SOLANA_RPC_URL` | no | public devnet | Fallback RPC if `HELIUS_RPC_URL` unset |
 | `HW_KEYPAIR_PATH` | no | `~/.config/auxin/hardware.json` | Hardware wallet keypair (JSON byte array) |
 | `OWNER_KEYPAIR_PATH` | no | `~/.config/auxin/owner.json` | Owner keypair |
@@ -207,6 +249,7 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 |---|---|
 | 3000 | Next.js dashboard |
 | 3001 | Grafana |
+| 3002 | Umbra sidecar (only when `AUXIN_PRIVACY=umbra`) |
 | 8765 | Twin WebSocket (JPEG frames, base64) |
 | 8766 | Bridge WebSocket (telemetry JSON, 10 Hz) |
 | 8767 | Bridge `/healthz` (JSON status) |
@@ -220,15 +263,18 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 ```
 auxin-automata/
 ├── sdk/          Python auxin-sdk: wallet, schema, oracle, Prometheus, bridge service
+│   └── src/auxin_sdk/privacy/   DirectProvider, CloakProvider, MagicBlockProvider, UmbraProvider
 ├── programs/     Anchor/Rust: agentic_hardware_bridge Solana program
 ├── edge/         ROS2 Python nodes: telemetry bridge + safety watchdog (Jetson)
 ├── dashboard/    Next.js 14: twin viewport, payment ticker, compliance log
 ├── twin/         PyBullet digital twin: simulation, TwinSource, WS frame server
+├── services/
+│   └── umbra-bridge/  Node.js Express sidecar wrapping @umbra-privacy/sdk
 ├── grafana/      Grafana dashboard JSON + auto-provisioning
 ├── prometheus/   Prometheus scrape config
-├── docs/         Architecture docs
-├── scripts/      Deploy, healthcheck, smoke test
-├── docker-compose.demo.yml  Full 5-service demo stack
+├── docs/         Architecture docs + privacy provider docs + side track submissions
+├── scripts/      Deploy, healthcheck, keypair setup, viewing key export
+├── docker-compose.demo.yml  Full demo stack; --profile umbra adds Umbra sidecar
 └── Makefile      bootstrap / setup / lint / test / demo / demo-down
 ```
 

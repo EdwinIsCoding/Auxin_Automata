@@ -50,6 +50,7 @@ from .fixtures import sample_workspace_image
 from .hashing import sha256_hex
 from .logging import bind_request_id
 from .oracle import OracleDecision, SafetyOracle
+from .privacy.base import PaymentResult, PrivacyProvider
 from .program.client import AuxinProgramClient
 from .schema import TelemetryFrame
 from .sources.base import TelemetrySource
@@ -370,7 +371,9 @@ class Bridge:
     ::
 
         async with AuxinProgramClient.connect(rpc_url) as client:
-            bridge = Bridge(source, oracle, client, wallet, broadcaster)
+            provider = DirectProvider(client)
+            bridge = Bridge(source, oracle, client, wallet, broadcaster,
+                            privacy_provider=provider)
             await bridge.run()   # blocks until SIGINT / cancellation
     """
 
@@ -382,6 +385,7 @@ class Bridge:
         wallet: HardwareWallet,
         ws_broadcaster: WebsocketBroadcaster,
         *,
+        privacy_provider: PrivacyProvider,
         owner_pubkey: Any | None = None,
         provider_pubkey: Any | None = None,
         rpc_url: str = "",
@@ -394,6 +398,7 @@ class Bridge:
         self.program_client = program_client
         self.wallet = wallet
         self.ws_broadcaster = ws_broadcaster
+        self.privacy_provider = privacy_provider
         self.owner_pubkey = owner_pubkey if owner_pubkey is not None else wallet.pubkey
         self.provider_pubkey = provider_pubkey
         self._healthz_port = healthz_port
@@ -552,6 +557,13 @@ class Bridge:
         """
         Drain the compliance queue forever.  Calls log_compliance for every event.
         Runs until cancelled.  task_done() is always called so queue.join() works.
+
+        NOTE: Compliance events are NEVER routed through self.privacy_provider.
+        They always go direct to the public chain via _submission.log_compliance().
+        This is intentional: compliance logs must be publicly auditable and must
+        arrive on-chain even if the active privacy provider is unavailable,
+        mis-configured, or temporarily down.  The integrity of the safety record
+        cannot depend on a third-party privacy relay.
         """
         log.info("compliance_worker.started")
         while True:
@@ -623,29 +635,32 @@ class Bridge:
                         )
                     else:
                         _t0 = time.monotonic()
-                        sig = await self._submission.stream_payment(
-                            hw_wallet=self.wallet,
+                        result: PaymentResult = await self.privacy_provider.send_payment(
+                            wallet=self.wallet,
                             owner_pubkey=self.owner_pubkey,
                             provider_pubkey=self.provider_pubkey,
-                            amount_lamports=PAYMENT_AMOUNT_LAMPORTS,
+                            lamports=PAYMENT_AMOUNT_LAMPORTS,
                             idempotency_key=task.idempotency_key,
                         )
                         _SOLANA_SUBMIT_LATENCY.observe(time.monotonic() - _t0)
-                        if sig:
+                        if result.tx_signature:
                             _TX_TOTAL.labels(kind="payment", status="ok").inc()
                             self._payments_total += 1
                             self._last_successful_tx = {
-                                "signature": sig,
+                                "signature": result.tx_signature,
                                 "kind": "payment",
                                 "amount_lamports": PAYMENT_AMOUNT_LAMPORTS,
+                                "privacy_provider": result.privacy_provider,
                             }
                             await self.ws_broadcaster.broadcast(
                                 {
                                     "type": "payment_event",
                                     "data": {
-                                        "signature": sig,
+                                        "signature": result.tx_signature,
                                         "amount_lamports": PAYMENT_AMOUNT_LAMPORTS,
                                         "provider": str(self.provider_pubkey),
+                                        "privacy_provider": result.privacy_provider,
+                                        "is_private": result.is_private,
                                         "timestamp": task.frame.timestamp.isoformat(),
                                         "oracle_reason": decision.reason,
                                     },

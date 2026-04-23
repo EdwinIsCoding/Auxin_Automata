@@ -1,0 +1,19 @@
+{
+  "name": "umbra-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sidecar Express server wrapping @umbra-privacy/sdk for the Auxin bridge",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "dependencies": {
+    "@umbra-privacy/sdk": "^0.1.0",
+    "@umbra-privacy/web-zk-prover": "^0.1.0",
+    "express": "^4.21.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

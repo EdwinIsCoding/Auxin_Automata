@@ -65,6 +65,8 @@ function textFallback(
       lamports,
       providerPubkey: provider,
       txSignature:    signature,
+      isPrivate:      false,
+      privacyProvider: "direct",
     };
     store.addPayment(event);
   }

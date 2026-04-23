@@ -151,6 +151,8 @@ export function tryDecodeEvent(
         lamports,
         providerPubkey: provider,
         txSignature:    signature,
+        isPrivate:      false,
+        privacyProvider: "direct",
       };
       return { type: "payment", event };
     }

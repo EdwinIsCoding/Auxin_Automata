@@ -20,6 +20,10 @@ export interface PaymentEvent {
   lamports: number;
   providerPubkey: string;
   txSignature: string;
+  /** True when payment was routed through a privacy provider (e.g. Cloak). */
+  isPrivate: boolean;
+  /** Name of the privacy provider: "direct", "cloak", etc. */
+  privacyProvider: string;
 }
 
 export interface ComplianceLog {

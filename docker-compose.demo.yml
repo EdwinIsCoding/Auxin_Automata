@@ -99,6 +99,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Umbra sidecar (only needed when AUXIN_PRIVACY=umbra) ────────────────
+  umbra-bridge:
+    build:
+      context: ./services/umbra-bridge
+      dockerfile: Dockerfile
+    networks: [auxin]
+    ports:
+      - "3002:3002"
+    environment:
+      UMBRA_NETWORK: "${UMBRA_NETWORK:-devnet}"
+      SOLANA_RPC_URL: "${HELIUS_RPC_URL:-https://api.devnet.solana.com}"
+      SOLANA_WS_URL: "${SOLANA_WS_URL:-}"
+      PORT: "3002"
+    profiles:
+      - umbra
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
   # ── Prometheus ────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.52.0

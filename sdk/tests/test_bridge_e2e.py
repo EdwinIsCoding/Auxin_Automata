@@ -38,6 +38,7 @@ from auxin_sdk.bridge import (
 )
 from auxin_sdk.hashing import sha256_hex
 from auxin_sdk.oracle import OracleDecision, SafetyOracle
+from auxin_sdk.privacy.direct import DirectProvider
 from auxin_sdk.program.client import AuxinProgramClient
 from auxin_sdk.schema import TelemetryFrame
 from auxin_sdk.sources.mock import MockSource
@@ -115,6 +116,9 @@ def _make_bridge(
         program_client=program_client,
         wallet=wallet,
         ws_broadcaster=broadcaster,
+        # DirectProvider wraps program_client, so existing mocks on
+        # program_client.stream_payment still get called through the provider.
+        privacy_provider=DirectProvider(program_client),
         owner_pubkey=wallet.pubkey,
         provider_pubkey=provider_pubkey or Keypair().pubkey(),
         healthz_port=0,  # disable HTTP servers in unit tests
@@ -464,6 +468,7 @@ class TestBridgeDevnet:
                 program_client=client,
                 wallet=funded_wallet,
                 ws_broadcaster=broadcaster,
+                privacy_provider=DirectProvider(client),
                 owner_pubkey=funded_wallet.pubkey,
                 provider_pubkey=None,
                 healthz_port=0,

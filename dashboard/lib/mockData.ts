@@ -92,12 +92,15 @@ export function generateTelemetryFrame(): TelemetryFrame {
 }
 
 export function generatePaymentEvent(): PaymentEvent {
+  const isPrivate = Math.random() < 0.3;
   return {
     id: randomHex(16),
     timestamp: Date.now(),
     lamports: Math.floor(randomBetween(1_000, 50_000_000)),
     providerPubkey: randomChoice(PROVIDER_PUBKEYS),
     txSignature: randomBase58(88),
+    isPrivate,
+    privacyProvider: isPrivate ? "cloak" : "direct",
   };
 }
 

@@ -58,11 +58,13 @@ interface BridgeComplianceEvent {
 }
 
 interface BridgePaymentEvent {
-  signature:      string;
-  amount_lamports: number;
-  provider:       string;
-  timestamp:      string;
-  oracle_reason:  string;
+  signature:        string;
+  amount_lamports:  number;
+  provider:         string;
+  privacy_provider: string;
+  is_private:       boolean;
+  timestamp:        string;
+  oracle_reason:    string;
 }
 
 type BridgeMessage =
@@ -139,11 +141,13 @@ function adaptCompliance(raw: BridgeComplianceEvent): ComplianceLog {
 
 function adaptPayment(raw: BridgePaymentEvent): PaymentEvent {
   return {
-    id:            raw.signature.slice(0, 16),
-    timestamp:     new Date(raw.timestamp).getTime(),
-    lamports:      raw.amount_lamports,
-    providerPubkey: raw.provider,
-    txSignature:   raw.signature,
+    id:              raw.signature.slice(0, 16),
+    timestamp:       new Date(raw.timestamp).getTime(),
+    lamports:        raw.amount_lamports,
+    providerPubkey:  raw.provider,
+    txSignature:     raw.signature,
+    isPrivate:       raw.is_private ?? false,
+    privacyProvider: raw.privacy_provider ?? "direct",
   };
 }
 

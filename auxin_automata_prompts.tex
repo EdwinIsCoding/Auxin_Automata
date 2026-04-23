@@ -381,4 +381,163 @@ Per-workspace READMEs (/sdk, /programs, /edge, /dashboard, /twin): each gets pur
 Tone: technical, confident, no marketing fluff. Judges are engineers and investors --- write for both.
 \end{promptbox}
 
+\newpage
+\section{Phase 5: Privacy Side Track Integrations}
+\textit{These prompts add privacy-preserving M2M payments to the bridge, targeting three Colosseum Frontier side tracks simultaneously. The pattern mirrors the existing AUXIN\_SOURCE agnosticism: a single AUXIN\_PRIVACY env var selects between providers. Build in order: Cloak first (0 competition, earliest deadline May 14), MagicBlock second (deadline May 27), Umbra third (deadline May 26).}
+
+\subsection*{5.0: Privacy Provider Abstraction}
+\textbf{Tool:} Claude Code \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: We are extending Auxin Automata's bridge to support private M2M payments for three Colosseum Frontier side tracks (Cloak, MagicBlock, Umbra). The current bridge calls program_client.stream_payment() directly as a public SOL transfer. We need to add an abstraction layer so the payment path can be swapped via an env var, exactly like AUXIN_SOURCE controls the telemetry source.
+
+Task: Create the PrivacyProvider abstraction in auxin_sdk/privacy/base.py, update the bridge to use it, and add a DirectProvider that preserves current behaviour.
+
+Requirements:
+1. auxin_sdk/privacy/base.py: PrivacyProvider ABC with:
+   - async def send_payment(wallet, provider_pubkey, lamports) -> PaymentResult
+   - PaymentResult is a Pydantic model: tx_signature (str | None), privacy_provider (str), is_private (bool), confirmation_slot (int | None), metadata (dict)
+
+2. auxin_sdk/privacy/direct.py: DirectProvider(PrivacyProvider) that wraps the existing program_client.stream_payment() call. is_private=False, privacy_provider="direct". This is the current behaviour, preserved exactly.
+
+3. Update bridge.py process() method: instead of calling program_client.stream_payment() directly, call self.privacy_provider.send_payment(). The privacy_provider is injected into the Bridge constructor.
+
+4. Update run_bridge.py entrypoint: read AUXIN_PRIVACY env var (default "direct"). For now, only "direct" is implemented. Add a provider_factory function that maps the string to the concrete class. Raise a clear error for unknown values.
+
+5. Compliance logging is NEVER routed through the privacy provider. Compliance events always go direct to the public chain via program_client.log_compliance(). This is intentional and must be documented in a code comment explaining why.
+
+6. Tests: verify DirectProvider produces identical results to the old direct call. Verify compliance events bypass the privacy provider.
+
+Do NOT implement Cloak, MagicBlock, or Umbra yet. Just the abstraction and the direct passthrough. This is the foundation the next three prompts build on.
+\end{promptbox}
+
+\subsection*{5.1: Cloak Integration (Stealth Addresses)}
+\textbf{Tool:} Claude Code \quad \textbf{Model:} Claude Opus 4.6 (stealth address crypto needs deeper reasoning)
+
+\begin{promptbox}
+Context: Integrating Cloak's stealth address protocol into Auxin Automata for the Cloak side track (deadline May 14, 0 submissions, $5,010 prize pool). Cloak uses stealth meta-addresses: the sender derives a unique one-time address only the recipient can detect and control. A relayer network submits transactions so the stealth address never touches the sender's main wallet.
+
+Cloak docs: https://www.cloakonchain.com/
+Cloak is on Solana, uses ZK proofs and Merkle tree commitments for unlinkable withdrawals. Has viewing keys for selective compliance disclosure.
+
+Task: Implement auxin_sdk/privacy/cloak.py as a CloakProvider(PrivacyProvider).
+
+Requirements:
+1. Install Cloak's SDK (check their npm/PyPI package --- if TypeScript only, use a subprocess bridge or httpx calls to their API).
+
+2. CloakProvider class:
+   - Constructor: takes cloak_api_url (from env CLOAK_API_URL), hardware_wallet.
+   - send_payment(): derive a one-time stealth address for the compute provider using Cloak's protocol, send lamports to that stealth address via the relayer, return PaymentResult with is_private=True, privacy_provider="cloak", tx_signature from the relayer response, metadata including the stealth address (for our records, not published).
+
+3. The compute provider must be pre-registered with a stealth meta-address. Add a setup script /scripts/setup_cloak_provider.py that registers the demo provider's stealth meta-address with Cloak. Document this as a one-time setup step.
+
+4. Viewing key integration: store the hardware wallet's Cloak viewing key in the wallet config. This allows authorised auditors to verify payment history without the operator exposing it publicly. Document this in relation to the compliance story: "compliance hashes are public on-chain evidence; payment details are private but auditable via viewing key."
+
+5. Update run_bridge.py: when AUXIN_PRIVACY=cloak, instantiate CloakProvider.
+
+6. Update the dashboard PaymentTicker: when a payment has is_private=True, show a lock icon and "Private Payment" instead of the amount and provider pubkey. Show the tx confirmation but not the stealth address.
+
+7. Error handling: if Cloak's relayer is down or the stealth address derivation fails, fall back to DirectProvider with a warning log. The demo must never stall on a privacy provider failure.
+
+8. Tests: mock Cloak's API, verify stealth address derivation produces unique addresses per payment, verify fallback to direct on failure, verify compliance events are never routed through Cloak.
+
+9. Add /docs/privacy-cloak.md explaining: what Cloak is, why autonomous hardware needs stealth addresses (operational frequency and provider relationships are competitive intelligence), how to enable it, how viewing keys work for auditors, and how this fits the Auxin compliance architecture.
+\end{promptbox}
+
+\subsection*{5.2: MagicBlock Integration (Private Ephemeral Rollups)}
+\textbf{Tool:} Claude Code \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: Integrating MagicBlock's Private Payments API into Auxin Automata for the MagicBlock privacy side track (deadline May 27, 2 submissions, $5,000 prize pool). MagicBlock uses Private Ephemeral Rollups inside TEEs. Users delegate funds, a crank settles them back to Solana with no traceable link between sender and receiver. Compliance is handled at the API layer with wallet screening and AML checks.
+
+MagicBlock Private Payments API docs: check https://docs.magicblock.gg or their GitHub for the REST API spec.
+
+Task: Implement auxin_sdk/privacy/magicblock.py as a MagicBlockProvider(PrivacyProvider).
+
+Requirements:
+1. MagicBlockProvider class:
+   - Constructor: takes api_url (from env MAGICBLOCK_API_URL), api_key (from env MAGICBLOCK_API_KEY), hardware_wallet.
+   - send_payment(): call MagicBlock's REST API to delegate a micro-amount from the hardware wallet into the private ephemeral rollup, specifying the compute provider as the recipient. The rollup's crank settles it. Return PaymentResult with is_private=True, privacy_provider="magicblock", confirmation from the API response.
+
+2. Budget pre-delegation: add a setup function that delegates a compute budget (e.g. 0.1 SOL) into MagicBlock's rollup once, then individual payments draw down from that pool. This avoids a separate delegation per micro-payment. Document the trade-off: pre-delegation is faster but means funds are in the TEE until settled.
+
+3. AML compliance angle: document that MagicBlock runs wallet screening and AML checks on every payment request by default. This is a feature for the submission narrative: "every autonomous M2M payment is AML-screened without any additional infrastructure on the operator's side."
+
+4. Update run_bridge.py: when AUXIN_PRIVACY=magicblock, instantiate MagicBlockProvider.
+
+5. Dashboard: same private payment indicator as Cloak (lock icon, "Private Payment").
+
+6. Fallback to DirectProvider on API failure, with warning log.
+
+7. Tests: mock the MagicBlock REST API, verify delegation and payment flow, verify fallback on failure.
+
+8. Add /docs/privacy-magicblock.md explaining: what MagicBlock's private payments are, why TEE-based settlement suits high-frequency M2M payments (sub-second settlement, no on-chain footprint per individual payment), the AML-by-default angle, and how to enable it.
+\end{promptbox}
+
+\subsection*{5.3: Umbra Integration (Shielded Pool)}
+\textbf{Tool:} Claude Code \quad \textbf{Model:} Claude Opus 4.6 (ZK/MPC integration needs deeper reasoning)
+
+\begin{promptbox}
+Context: Integrating Umbra's privacy protocol into Auxin Automata for the Umbra side track (deadline May 26, 7 submissions, $10,000 prize pool --- largest prize, most competition). Umbra is a privacy layer on Solana using Arcium's MPC network. The TypeScript SDK supports confidential transfers via a unified mixer pool (Merkle trees + ZK proofs), breaking the on-chain link between deposits and withdrawals. Selective disclosure lets users grant viewing access to auditors.
+
+Umbra SDK: TypeScript, available on npm (@umbra/sdk or similar --- check their docs). Supports mainnet, devnet, browser and Node.js.
+Umbra docs: https://docs.umbraprivacy.com
+
+Task: Implement auxin_sdk/privacy/umbra.py as an UmbraProvider(PrivacyProvider).
+
+Requirements:
+1. Since Umbra's SDK is TypeScript and our bridge is Python, create a lightweight Node.js microservice at /services/umbra-bridge/:
+   - Express server with two endpoints: POST /deposit (deposit SOL into Umbra's shielded pool) and POST /withdraw (withdraw to a recipient from the pool).
+   - Wraps the Umbra TypeScript SDK calls.
+   - Runs as a sidecar process, started by docker-compose alongside the bridge.
+   - Communicates with the Python bridge via HTTP on localhost.
+
+2. UmbraProvider class:
+   - Constructor: takes umbra_service_url (default http://localhost:3001), hardware_wallet.
+   - send_payment(): call the sidecar's /deposit endpoint with the payment amount, then /withdraw to the provider's Umbra address. Return PaymentResult with is_private=True, privacy_provider="umbra", the withdrawal proof hash in metadata.
+
+3. Selective disclosure setup: the hardware wallet's Umbra viewing key is generated during setup and stored alongside the hardware keypair. Add a script /scripts/setup_umbra_viewing_key.py that generates and exports the viewing key. Document: "operators can share this viewing key with auditors or regulators to prove payment history without making it public."
+
+4. Update run_bridge.py: when AUXIN_PRIVACY=umbra, instantiate UmbraProvider. Verify the sidecar is running (health check) before starting the bridge loop.
+
+5. Update docker-compose.demo.yml: add the umbra-bridge sidecar service. Only starts when AUXIN_PRIVACY=umbra.
+
+6. Dashboard: same private payment indicator.
+
+7. Fallback to DirectProvider if the sidecar is unreachable, with warning log.
+
+8. Tests: mock the sidecar HTTP endpoints, verify deposit+withdraw flow, verify fallback on sidecar failure, verify selective disclosure key generation.
+
+9. Add /docs/privacy-umbra.md explaining: what Umbra is, how the shielded pool works conceptually (without leaking their cryptographic internals), why M2M payments benefit from pool-based privacy (individual robot payments are indistinguishable from each other in the pool), the selective disclosure story for auditors, and the sidecar architecture decision.
+\end{promptbox}
+
+\subsection*{5.4: Privacy Integration Documentation \& Side Track Submissions}
+\textbf{Tool:} Claude Code \quad \textbf{Model:} Claude Sonnet 4.6
+
+\begin{promptbox}
+Context: All three privacy providers (Cloak, MagicBlock, Umbra) are implemented. Now we need unified documentation, an updated architecture diagram, and the submission materials for each side track.
+
+Task: Create the unified privacy docs and prepare the side track submission texts.
+
+Requirements:
+1. Update the root README.md:
+   - Add a "Privacy Providers" section after the existing architecture description.
+   - Explain AUXIN_PRIVACY env var: direct (default, public payments), cloak (stealth addresses), magicblock (private ephemeral rollups), umbra (shielded pool).
+   - Single table showing: provider name, privacy model, compliance mechanism, setup required.
+   - Updated Mermaid architecture diagram adding the privacy provider layer between the bridge and Solana.
+
+2. Create /docs/privacy-overview.md:
+   - "Why Autonomous Hardware Needs Payment Privacy": 3 paragraphs covering operational intelligence leakage, competitive risks of public payment patterns, and the compliance paradox (compliance logs must be public, payments should be private).
+   - Comparison table of the three providers: Cloak (identity privacy via stealth addresses), MagicBlock (settlement privacy via TEE rollups, AML-by-default), Umbra (transaction privacy via shielded pools, selective disclosure).
+   - "Compliance Architecture": explain that compliance events ALWAYS go to the public chain regardless of privacy provider, because immutable public evidence is the entire point of the compliance log. Privacy applies only to the economic layer, never the safety layer.
+
+3. Create three submission text files for the side tracks:
+   /docs/submissions/cloak-submission.md
+   /docs/submissions/magicblock-submission.md
+   /docs/submissions/umbra-submission.md
+   Each contains: project name, one-liner tailored to that track's focus, link to repo, link to Devnet program, description of the specific integration (what you built with their SDK, what problem it solves, why M2M hardware payments are a novel use case for their protocol), and a link to the relevant /docs/privacy-*.md file.
+
+4. Tone for submissions: technical, concise, focused on what's novel. Judges for side tracks are the sponsor's team, not Colosseum judges. They want to see their SDK used in a genuinely new way. Lead with "first M2M hardware payment privacy integration on Solana" and back it with the deployed code.
+\end{promptbox}
+
 \end{document}

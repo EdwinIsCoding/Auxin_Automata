@@ -2,7 +2,7 @@
 
 import { useAuxinStore } from "@/lib/store";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, Loader2, Wallet } from "lucide-react";
+import { ExternalLink, Loader2, Lock, Wallet } from "lucide-react";
 
 function lamportsToSol(lamports: number): string {
   return (lamports / 1_000_000_000).toFixed(6);
@@ -100,21 +100,38 @@ export function PaymentTicker() {
                 {formatTime(p.timestamp)}
               </span>
 
-              {/* SOL amount — brighter neon green */}
-              <span
-                className="shrink-0 w-24 tabular-nums font-bold"
-                style={{
-                  color: "#14F195",
-                  textShadow: i === 0 ? "0 0 10px rgba(20,241,149,0.5)" : "none",
-                }}
-              >
-                ◎ {lamportsToSol(p.lamports)}
-              </span>
+              {/* SOL amount — hidden behind lock icon when private */}
+              {p.isPrivate ? (
+                <span
+                  className="shrink-0 w-24 flex items-center gap-1 font-bold"
+                  style={{ color: "#A855F7" }}
+                  title="Private Payment — amount and recipient shielded via Cloak"
+                >
+                  <Lock className="h-3 w-3" />
+                  Private
+                </span>
+              ) : (
+                <span
+                  className="shrink-0 w-24 tabular-nums font-bold"
+                  style={{
+                    color: "#14F195",
+                    textShadow: i === 0 ? "0 0 10px rgba(20,241,149,0.5)" : "none",
+                  }}
+                >
+                  ◎ {lamportsToSol(p.lamports)}
+                </span>
+              )}
 
-              {/* Provider */}
-              <span className="shrink-0" style={{ color: "#C084FC" }}>
-                {truncatePubkey(p.providerPubkey)}
-              </span>
+              {/* Provider — hidden for private payments */}
+              {p.isPrivate ? (
+                <span className="shrink-0 text-[10px]" style={{ color: "#64748b" }}>
+                  shielded recipient
+                </span>
+              ) : (
+                <span className="shrink-0" style={{ color: "#C084FC" }}>
+                  {truncatePubkey(p.providerPubkey)}
+                </span>
+              )}
 
               {/* Sig + link */}
               <div className="flex items-center gap-1 ml-auto shrink-0">
