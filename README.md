@@ -2,7 +2,7 @@
 
 **Autonomous hardware wallets · M2M micropayments · Immutable compliance on Solana**
 
-Auxin Automata is a middleware stack that gives physical hardware its own Solana wallet. The hardware autonomously signs micropayments for AI inference and hashes kinematic safety telemetry to a tamper-proof on-chain compliance log — no human in the signing loop after `initialize_agent`. The same SDK runs identically against a pure-Python mock, a PyBullet digital twin, and a live ROS2 robot arm, selected by a single environment variable with zero code changes. Built for the [Colosseum Frontier Hackathon](https://www.colosseum.org/) by Edwin Redhead and Tara Kasayapanand.
+Auxin Automata is a middleware stack that gives physical hardware its own Solana wallet. The hardware autonomously signs micropayments for AI inference and hashes kinematic safety telemetry to a tamper-proof on-chain compliance log — no human in the signing loop after `initialize_agent`. A built-in Financial Intelligence layer continuously scores machine health, runs a Claude-powered treasury agent to optimise burn rate and runway, and auto-generates PDF invoices for every billing period. The same SDK runs identically against a pure-Python mock, a PyBullet digital twin, and a live ROS2 robot arm, selected by a single environment variable with zero code changes. Built for the [Colosseum Frontier Hackathon](https://www.colosseum.org/) by Edwin Redhead and Tara Kasayapanand.
 
 ---
 
@@ -25,6 +25,7 @@ flowchart LR
         SRC["TelemetrySource ABC\nAUXIN_SOURCE env var"]
         BRIDGE["Bridge\nasync pipeline"]
         ORACLE["Gemini Safety Oracle\ngemini-2.0-flash + local fallback"]
+        FI["Financial Intelligence\nRisk Scorer · Treasury Agent · Invoice Generator"]
         PROM["Prometheus :9090\n5 metrics"]
     end
 
@@ -48,6 +49,9 @@ flowchart LR
         TWIN_VP["TwinViewport"]
         PAY["PaymentTicker\nlock icon when is_private"]
         COMP["ComplianceTable"]
+        RG["RiskGauge\nHealth Score A–F"]
+        TP["TreasuryPanel\nBurn rate · Runway · AI actions"]
+        INV["InvoiceDownloader\nPDF download"]
     end
 
     ARM -->|"joint_states (ROS2)"| ROS
@@ -63,6 +67,8 @@ flowchart LR
     MB -->|"unsigned tx → sign → submit"| PROG
     UMBRA -->|"UTXO deposit tx"| PROG
     BRIDGE -->|"log_compliance_event tx\nALWAYS public — bypasses privacy layer"| PROG
+    BRIDGE -->|"payment + compliance logs"| FI
+    FI -->|"risk_report every 60 s\ntreasury_analysis every 120 s\ninvoice_ready every 24 h"| UI
     BRIDGE -->|"telemetry JSON @ 10 Hz\nWS :8766"| UI
     TWIN -->|"JPEG frames base64\nWS :8765"| TWIN_VP
     PROG -->|"ComputePaymentEvent\nComplianceEvent\nonLogs subscription"| PAY
@@ -72,6 +78,42 @@ flowchart LR
     PROM --> PSERVER
     PSERVER --> GRAFANA
 ```
+
+---
+
+## Financial Intelligence Layer
+
+The bridge runs three background workers that turn raw payment and compliance history into actionable financial signals — all without blocking telemetry throughput.
+
+| Worker | Interval | Output |
+|---|---|---|
+| **Risk Scorer** | 60 s | `RiskReport` — overall score 0–100, grade A–F, 4 weighted dimensions, 7-day trend |
+| **Treasury Agent** | 120 s | `TreasuryAnalysis` — burn rate, runway, budget allocation, Claude-powered recommendations |
+| **Invoice Generator** | 24 h | PDF invoice (weasyprint) with provider subtotals and compliance summary; served at `GET /invoice/latest` |
+
+### Risk dimensions
+
+| Dimension | Weight | What it measures |
+|---|---|---|
+| Financial Health | 30% | Runway hours, burn rate stability |
+| Operational Stability | 25% | Payment interval regularity, uptime |
+| Compliance Record | 25% | Anomaly event rate, severity distribution |
+| Provider Diversity | 20% | Number of unique providers, HHI concentration |
+
+### Treasury Agent safety constraints
+
+The Claude-powered treasury agent (`claude-sonnet-4-6`) is the only component with AI-driven auto-execution authority. The allowlist is intentionally minimal:
+
+- `throttle_inference` — reduce oracle call frequency
+- `increase_reserve` — shift budget allocation toward reserve
+
+Fund transfers and any other action **can never be marked `auto_executable`**, even if the LLM response tries to set it. The safety filter in `treasury/agent.py::_is_auto_executable_safe()` enforces this at parse time. The agent always returns a valid `TreasuryAnalysis` — on API failure it falls back to a deterministic heuristic (`used_fallback=True`), so the demo never stalls.
+
+### Dashboard panels
+
+- **RiskGauge** — radial arc gauge with grade overlay, 4 animated dimension bars, 7-day sparkline
+- **TreasuryPanel** — burn rate, runway (colour-coded by status), budget donut chart, AI summary, action list with priority badges and AUTO indicators
+- **InvoiceDownloader** — shows latest period dates and SOL total; one-click PDF download from the bridge HTTP endpoint
 
 ---
 
@@ -112,10 +154,10 @@ See [`docs/privacy-overview.md`](docs/privacy-overview.md) for the full comparis
 ### `make demo` — Docker only, ≤ 60 s cold start
 
 ```bash
-git clone https://github.com/EdwinIsCoding/auxin-automata
-cd auxin-automata
+git clone https://github.com/EdwinIsCoding/Auxin_Automata
+cd Auxin_Automata
 
-# Fill in HELIUS_RPC_URL and GEMINI_API_KEY at minimum
+# Fill in at minimum: HELIUS_RPC_URL, GEMINI_API_KEY, ANTHROPIC_API_KEY
 cp sdk/.env.example sdk/.env
 
 # First time only — generates keypairs, airdrops SOL, initialises on-chain state
@@ -134,6 +176,7 @@ Services started automatically: twin ws server → bridge (twin mode) → dashbo
 | Grafana | http://localhost:3001 |
 | Prometheus | http://localhost:9091 |
 | Bridge `/healthz` | http://localhost:8767/healthz |
+| Latest invoice | http://localhost:8767/invoice/latest |
 | Bridge metrics | http://localhost:9090/metrics |
 
 `make demo-down` tears everything down and removes volumes.
@@ -143,7 +186,10 @@ Services started automatically: twin ws server → bridge (twin mode) → dashbo
 ```bash
 make bootstrap            # installs all Python + Node deps
 
-cp sdk/.env.example sdk/.env   # edit: set HELIUS_RPC_URL
+cp sdk/.env.example sdk/.env   # edit: HELIUS_RPC_URL, GEMINI_API_KEY, ANTHROPIC_API_KEY
+
+# macOS only: weasyprint needs Homebrew GTK libs
+export DYLD_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_LIBRARY_PATH"
 
 # Terminal 1 — digital twin WebSocket server
 cd twin && python -m twin --mode ws          # ws://localhost:8765
@@ -177,6 +223,19 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 1. Red border appears on TwinViewport within 1 frame of frame 30
 2. ComplianceTable shows a new HIGH/CRIT row with hash + tx signature
 3. Click the signature link → Solana Explorer shows `log_compliance_event` with your telemetry hash
+4. RiskGauge score drops within 60 s as the compliance event is factored in
+
+### Invoice CLI
+
+```bash
+# Generate a PDF invoice for the last 24 hours (mock data, no bridge needed)
+cd sdk && uv run python scripts/generate_invoice.py \
+  --wallet <pubkey> \
+  --from $(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ) \
+  --to $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --output /tmp/invoice.pdf \
+  --mock
+```
 
 ---
 
@@ -202,6 +261,12 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 | `HELIUS_RPC_URL` | yes | — | Helius / QuickNode RPC (HTTP or WSS) |
 | `AUXIN_SOURCE` | no | `mock` | `mock` \| `twin` \| `ros2` |
 | `AUXIN_PRIVACY` | no | `direct` | `direct` \| `cloak` \| `magicblock` \| `umbra` |
+| `GEMINI_API_KEY` | no | — | Gemini API key; local fallback heuristic if absent |
+| `ANTHROPIC_API_KEY` | no | — | Claude API key for AI treasury analysis; heuristic fallback if absent |
+| `AUXIN_RISK_INTERVAL_S` | no | `60` | Risk scoring cadence (seconds) |
+| `AUXIN_TREASURY_INTERVAL_S` | no | `120` | Treasury analysis cadence (seconds) |
+| `AUXIN_INVOICE_INTERVAL_H` | no | `24` | Invoice generation cadence (hours) |
+| `AUXIN_INVOICE_DIR` | no | `/tmp/auxin_invoices` | Invoice PDF output directory |
 | `CLOAK_PROGRAM_ID` | no | canonical | Cloak shield pool program address |
 | `CLOAK_RELAY_URL` | no | SDK default | Cloak relay service URL |
 | `MAGICBLOCK_API_URL` | no | `https://payments.magicblock.app` | MagicBlock API base URL |
@@ -211,11 +276,10 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 | `SOLANA_RPC_URL` | no | public devnet | Fallback RPC if `HELIUS_RPC_URL` unset |
 | `HW_KEYPAIR_PATH` | no | `~/.config/auxin/hardware.json` | Hardware wallet keypair (JSON byte array) |
 | `OWNER_KEYPAIR_PATH` | no | `~/.config/auxin/owner.json` | Owner keypair |
-| `AUXIN_PROGRAM_ID` | no | from `programs/deployed.json` | Override on-chain program address |
+| `PROGRAM_ID` | no | from `programs/deployed.json` | Override on-chain program address |
 | `PROVIDER_PUBKEY` | no | — | Base58 provider pubkey; payments skipped if unset |
-| `GEMINI_API_KEY` | no | — | Gemini API key; local fallback heuristic if absent |
 | `BRIDGE_WS_PORT` | no | `8766` | Dashboard telemetry WebSocket port |
-| `BRIDGE_HEALTHZ_PORT` | no | `8767` | `/healthz` JSON endpoint port |
+| `BRIDGE_HEALTHZ_PORT` | no | `8767` | `/healthz` + `/invoice/latest` HTTP port |
 | `AUXIN_MOCK_RATE_HZ` | no | `10` | MockSource frame rate |
 | `AUXIN_MOCK_ANOMALY_EVERY` | no | `12` | Anomaly injection cadence (frames) |
 | `SENTRY_DSN` | no | — | Python Sentry error tracking (optional) |
@@ -228,6 +292,7 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 | `NEXT_PUBLIC_PROGRAM_ID` | yes (live) | — | Deployed program address |
 | `NEXT_PUBLIC_AGENT_PUBKEY` | no | — | Pubkey shown in Header |
 | `NEXT_PUBLIC_BRIDGE_WS_URL` | no | `ws://localhost:8766` | Bridge telemetry WebSocket |
+| `NEXT_PUBLIC_BRIDGE_HTTP_URL` | no | `http://localhost:8767` | Bridge HTTP (healthz + invoice download) |
 | `NEXT_PUBLIC_TWIN_WS_URL` | no | `ws://localhost:8765` | Twin JPEG frame WebSocket |
 | `NEXT_PUBLIC_SENTRY_DSN` | no | — | Client-side Sentry error tracking (optional) |
 
@@ -252,7 +317,7 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 | 3002 | Umbra sidecar (only when `AUXIN_PRIVACY=umbra`) |
 | 8765 | Twin WebSocket (JPEG frames, base64) |
 | 8766 | Bridge WebSocket (telemetry JSON, 10 Hz) |
-| 8767 | Bridge `/healthz` (JSON status) |
+| 8767 | Bridge HTTP: `/healthz` status · `GET /invoice/latest` PDF |
 | 9090 | Bridge Prometheus metrics |
 | 9091 | Prometheus server (docker-compose) |
 
@@ -261,21 +326,29 @@ cd sdk && AUXIN_SOURCE=twin GEMINI_API_KEY=... uv run python scripts/run_bridge.
 ## Repo Layout
 
 ```
-auxin-automata/
-├── sdk/          Python auxin-sdk: wallet, schema, oracle, Prometheus, bridge service
-│   └── src/auxin_sdk/privacy/   DirectProvider, CloakProvider, MagicBlockProvider, UmbraProvider
-├── programs/     Anchor/Rust: agentic_hardware_bridge Solana program
-├── edge/         ROS2 Python nodes: telemetry bridge + safety watchdog (Jetson)
-├── dashboard/    Next.js 14: twin viewport, payment ticker, compliance log
-├── twin/         PyBullet digital twin: simulation, TwinSource, WS frame server
+Auxin_Automata/
+├── sdk/                  Python auxin-sdk package
+│   └── src/auxin_sdk/
+│       ├── risk/         Deterministic risk scorer → RiskReport (grade A–F, 7-day trend)
+│       ├── treasury/     Claude-powered TreasuryAgent + heuristic fallback
+│       ├── invoicing/    InvoiceGenerator — weasyprint PDF → pdfkit → HTML fallback
+│       ├── sources/      TelemetrySource ABC + MockSource, TwinSource, ROS2Source
+│       ├── privacy/      DirectProvider, CloakProvider, MagicBlockProvider, UmbraProvider
+│       └── bridge.py     WebSocket broadcaster + HTTP server + background workers
+├── programs/             Anchor/Rust: agentic_hardware_bridge Solana program
+├── edge/                 ROS2 Python nodes: telemetry bridge + safety watchdog (Jetson)
+├── dashboard/            Next.js 14 dashboard
+│   └── components/       TelemetryCard, PaymentTicker, ComplianceTable, TwinViewport,
+│                         RiskGauge, TreasuryPanel, InvoiceDownloader
+├── twin/                 PyBullet digital twin: simulation, TwinSource, WS frame server
 ├── services/
-│   └── umbra-bridge/  Node.js Express sidecar wrapping @umbra-privacy/sdk
-├── grafana/      Grafana dashboard JSON + auto-provisioning
-├── prometheus/   Prometheus scrape config
-├── docs/         Architecture docs + privacy provider docs + side track submissions
-├── scripts/      Deploy, healthcheck, keypair setup, viewing key export
-├── docker-compose.demo.yml  Full demo stack; --profile umbra adds Umbra sidecar
-└── Makefile      bootstrap / setup / lint / test / demo / demo-down
+│   └── umbra-bridge/     Node.js Express sidecar wrapping @umbra-privacy/sdk
+├── grafana/              Grafana dashboard JSON + auto-provisioning
+├── prometheus/           Prometheus scrape config
+├── docs/                 Architecture docs + privacy provider docs
+├── scripts/              Deploy, healthcheck, keypair setup
+├── docker-compose.demo.yml
+└── Makefile              bootstrap / setup / lint / test / demo / demo-down
 ```
 
 ---
@@ -299,14 +372,16 @@ Grafana at `:3001` auto-provisions four panels: tx rate by kind/status, oracle l
 ## Tests
 
 ```bash
-cd sdk && uv run python -m pytest        # 105 tests, 80.2% coverage
-cd twin && uv run python -m pytest       # 16 tests
-cd dashboard && pnpm lint && pnpm build  # 0 ESLint warnings, clean build
-cd programs && anchor test               # 23 TypeScript tests
-make test                                # all of the above
+# SDK — risk scorer, treasury agent, invoice generator + existing suite
+cd sdk && .venv/bin/python -m pytest          # 34 tests, 59% coverage
+
+cd twin && uv run python -m pytest            # 16 tests
+cd dashboard && pnpm lint && pnpm build       # 0 ESLint warnings, clean build
+cd programs && anchor test                    # 23 TypeScript tests
+make test                                     # all of the above
 ```
 
-CI (`.github/workflows/ci.yml`) runs all three on every push to `main`.
+CI (`.github/workflows/ci.yml`) runs all suites on every push to `main`.
 
 ---
 
@@ -321,22 +396,33 @@ solana airdrop 2 <hardware_pubkey> --url https://api.devnet.solana.com
 **2. Oracle always returns `used_fallback=True`**
 `GEMINI_API_KEY` is unset or invalid. The bridge runs correctly with the local heuristic. Set the key to enable live Gemini calls.
 
-**3. Dashboard shows no compliance or payment events**
+**3. Treasury analysis always shows "(heuristic)"**
+`ANTHROPIC_API_KEY` is unset or invalid. The bridge continues normally using the deterministic fallback. Set the key to enable live Claude analysis.
+
+**4. Dashboard shows no compliance or payment events**
 (a) `NEXT_PUBLIC_PROGRAM_ID` must match the deployed program. (b) `NEXT_PUBLIC_HELIUS_RPC_URL` must be `wss://` — `onLogs` requires a persistent WebSocket.
 
-**4. `anchor test` fails with `Connection refused` on port 8899**
+**5. `anchor test` fails with `Connection refused` on port 8899**
 Start the validator manually first:
 ```bash
 solana-test-validator --reset --quiet &
 sleep 15 && anchor test --skip-local-validator
 ```
 
-**5. `AUXIN_SOURCE=twin` crashes with `ModuleNotFoundError: No module named 'twin'`**
+**6. `AUXIN_SOURCE=twin` crashes with `ModuleNotFoundError: No module named 'twin'`**
 Wire the path dep into the bridge venv:
 ```bash
 cd twin && uv pip install -e . --python ../sdk/.venv/bin/python
 ```
 Or run `make bootstrap` which handles this automatically.
+
+**7. weasyprint fails with `OSError: cannot load library 'libgobject-2.0-0'` (macOS)**
+Install the missing Homebrew libraries and set the library path:
+```bash
+brew install gobject-introspection
+export DYLD_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_LIBRARY_PATH"
+```
+Add the `export` line to your shell profile or the bridge launcher script. The invoice generator falls back to pdfkit, then HTML bytes if weasyprint still fails.
 
 ---
 
