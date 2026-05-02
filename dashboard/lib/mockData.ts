@@ -4,6 +4,8 @@ import {
   type TelemetryFrame,
   type PaymentEvent,
   type ComplianceLog,
+  type RiskReport,
+  type TreasuryAnalysis,
 } from "./store";
 
 const JOINT_NAMES = ["J1", "J2", "J3", "J4", "J5", "J6", "J7"];
@@ -116,6 +118,62 @@ export function generateComplianceLog(): ComplianceLog {
   };
 }
 
+// ── Mock financial intelligence data ──────────────────────────────────────────
+
+function isoAgo(daysAgo: number): string {
+  const d = new Date(Date.now() - daysAgo * 86_400_000);
+  return d.toISOString().slice(0, 10);
+}
+
+function generateMockRiskReport(): RiskReport {
+  const score = 78 + Math.random() * 10; // ~78–88, grade A/B
+  return {
+    overall_score: parseFloat(score.toFixed(1)),
+    grade: score >= 80 ? "A" : "B",
+    breakdown: [
+      { category: "Financial Health",      score: 82, weight: 0.30, factors: ["Runway 96h at current burn", "Burn rate CV=0.18 (stable)"] },
+      { category: "Operational Stability", score: 79, weight: 0.25, factors: ["Payment interval CV=0.31 (regular)", "Uptime 89% (7d)"] },
+      { category: "Compliance Record",     score: 91, weight: 0.25, factors: ["0.5 events per 100 tx", "No sev≥2 in 7 days"] },
+      { category: "Provider Diversity",    score: 74, weight: 0.20, factors: ["3 unique providers", "HHI 0.41 (moderate)"] },
+    ],
+    trend: "improving",
+    trend_data: Array.from({ length: 7 }, (_, i) => ({
+      date: isoAgo(6 - i),
+      score: parseFloat((60 + i * 3.5 + Math.random() * 4).toFixed(1)),
+    })),
+    computed_at: new Date().toISOString(),
+  };
+}
+
+function generateMockTreasuryAnalysis(): TreasuryAnalysis {
+  return {
+    burn_rate_lamports_per_hour: 42_000,
+    runway_hours: 85.2,
+    runway_status: "healthy",
+    budget_allocation: { inference: 70, reserve: 20, buffer: 10 },
+    recommended_actions: [
+      {
+        action: "monitor_burn_rate",
+        priority: "low",
+        reasoning: "Burn rate stable at 42k lam/hr. No action required.",
+        auto_executable: false,
+      },
+      {
+        action: "diversify_providers",
+        priority: "medium",
+        reasoning: "ProviderA handles 58% of payments — consider adding a 4th provider.",
+        auto_executable: false,
+      },
+    ],
+    anomaly_flags: [],
+    summary:
+      "Wallet is operating normally with 85h runway. Burn rate is stable and compliance record is clean. Provider diversification could be improved.",
+    risk_score_context: 83.2,
+    analyzed_at: new Date().toISOString(),
+    used_fallback: true,
+  };
+}
+
 export function startMockDataFeed() {
   const store = useAuxinStore.getState();
 
@@ -127,6 +185,11 @@ export function startMockDataFeed() {
     store.addComplianceLog(generateComplianceLog());
   }
   store.setTelemetry(generateTelemetryFrame());
+
+  // Seed financial intelligence (so dashboard shows data immediately in mock mode)
+  store.setRiskReport(generateMockRiskReport());
+  store.setTreasuryAnalysis(generateMockTreasuryAnalysis());
+
   store.setLoading(false);
 
   // Telemetry at ~10 Hz (100ms)
@@ -144,9 +207,21 @@ export function startMockDataFeed() {
     useAuxinStore.getState().addComplianceLog(generateComplianceLog());
   }, randomBetween(5000, 10000));
 
+  // Risk report every 60 s (mirrors bridge AUXIN_RISK_INTERVAL_S default)
+  const riskInterval = setInterval(() => {
+    useAuxinStore.getState().setRiskReport(generateMockRiskReport());
+  }, 60_000);
+
+  // Treasury analysis every 120 s (mirrors bridge AUXIN_TREASURY_INTERVAL_S default)
+  const treasuryInterval = setInterval(() => {
+    useAuxinStore.getState().setTreasuryAnalysis(generateMockTreasuryAnalysis());
+  }, 120_000);
+
   return () => {
     clearInterval(telemetryInterval);
     clearInterval(paymentInterval);
     clearInterval(complianceInterval);
+    clearInterval(riskInterval);
+    clearInterval(treasuryInterval);
   };
 }

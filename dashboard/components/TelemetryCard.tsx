@@ -3,8 +3,8 @@
 import { useAuxinStore } from "@/lib/store";
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   Tooltip,
   ReferenceLine,
 } from "recharts";
@@ -30,22 +30,16 @@ function JointRow({
 }) {
   const accentColor = isAnomaly ? "#ef4444" : JOINT_COLORS[index % JOINT_COLORS.length];
   const isPurple = !isAnomaly && index % 2 === 0;
+  const gradientId = `spark-grad-${index}`;
 
   return (
     <div
-      className="flex items-center gap-3 rounded-2xl px-3 py-2 transition-all duration-300"
+      className={`row-interactive flex items-center gap-3 rounded-2xl px-3 py-2 ${isAnomaly ? "anomaly-shimmer" : ""}`}
       style={{
-        backgroundColor: isAnomaly
-          ? "rgba(239,68,68,0.07)"
-          : isPurple
-          ? "rgba(168,85,247,0.05)"
-          : "rgba(20,184,166,0.04)",
+        background: isAnomaly
+          ? `linear-gradient(90deg, rgba(239,68,68,0.10) 0%, transparent 60%)`
+          : `linear-gradient(90deg, ${accentColor}14 0%, transparent 60%)`,
         borderLeft: `2px solid ${accentColor}${isAnomaly ? "cc" : "60"}`,
-        boxShadow: isAnomaly
-          ? "0 0 14px -4px rgba(239,68,68,0.35)"
-          : isPurple
-          ? "inset 0 0 20px -10px rgba(168,85,247,0.15)"
-          : "none",
       }}
     >
       {/* Joint label */}
@@ -58,10 +52,8 @@ function JointRow({
 
       {/* Angle */}
       <div className="w-20 shrink-0">
-        <p className="text-[10px] leading-none tracking-wider uppercase" style={{ color: "#3d4663" }}>
-          angle
-        </p>
-        <p className="text-xs font-mono tabular-nums" style={{ color: "#e2e8f0" }}>
+        <p className="label-chip" style={{ color: "#3d4663" }}>angle</p>
+        <p className="value-primary text-xs font-mono" style={{ color: "#e2e8f0" }}>
           {angle >= 0 ? "+" : ""}
           {angle.toFixed(1)}°
         </p>
@@ -69,25 +61,30 @@ function JointRow({
 
       {/* Torque */}
       <div className="w-20 shrink-0">
-        <p className="text-[10px] leading-none tracking-wider uppercase" style={{ color: "#3d4663" }}>
-          torque
-        </p>
-        <p className="text-xs font-mono tabular-nums" style={{ color: "#e2e8f0" }}>
+        <p className="label-chip" style={{ color: "#3d4663" }}>torque</p>
+        <p className="value-primary text-xs font-mono" style={{ color: "#e2e8f0" }}>
           {torque >= 0 ? "+" : ""}
           {torque.toFixed(1)} Nm
         </p>
       </div>
 
-      {/* Sparkline */}
+      {/* Sparkline with gradient fill */}
       <div className="flex-1 h-8">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={history}>
+          <AreaChart data={history}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={accentColor} stopOpacity={0.35} />
+                <stop offset="95%" stopColor={accentColor} stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <ReferenceLine y={0} stroke="rgba(30,40,70,0.8)" strokeDasharray="2 2" />
-            <Line
+            <Area
               type="monotone"
               dataKey="angle"
               stroke={accentColor}
               strokeWidth={1.5}
+              fill={`url(#${gradientId})`}
               dot={false}
               isAnimationActive={false}
             />
@@ -103,7 +100,7 @@ function JointRow({
               labelStyle={{ display: "none" }}
               formatter={(v: number) => [`${v.toFixed(1)}°`, "angle"]}
             />
-          </LineChart>
+          </AreaChart>
         </ResponsiveContainer>
       </div>
     </div>

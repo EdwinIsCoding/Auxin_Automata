@@ -19,7 +19,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAuxinStore } from "./store";
-import type { TelemetryFrame, JointData, PaymentEvent, ComplianceLog } from "./store";
+import type { TelemetryFrame, JointData, PaymentEvent, ComplianceLog, RiskReport, TreasuryAnalysis, InvoiceMeta } from "./store";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -67,10 +67,23 @@ interface BridgePaymentEvent {
   oracle_reason:    string;
 }
 
+interface BridgeInvoiceReady {
+  invoice_id: string;
+  period_start: string;
+  period_end: string;
+  total_sol: number;
+  total_transactions: number;
+  pdf_path: string;
+}
+
 type BridgeMessage =
   | { type: "telemetry";        data: PythonTelemetryFrame }
   | { type: "compliance_event"; data: BridgeComplianceEvent }
-  | { type: "payment_event";    data: BridgePaymentEvent };
+  | { type: "payment_event";    data: BridgePaymentEvent }
+  | { type: "risk_report";      data: RiskReport }
+  | { type: "treasury_analysis"; data: TreasuryAnalysis }
+  | { type: "invoice_ready";    data: BridgeInvoiceReady }
+  | { type: "bridge_adjustment"; data: Record<string, unknown> };
 
 // ── Rolling history buffer (persists between frames, cleared on remount) ──────
 
@@ -206,6 +219,19 @@ export function useBridgeSocket(): void {
           s.addComplianceLog(adaptCompliance(msg.data));
         } else if (msg.type === "payment_event") {
           s.addPayment(adaptPayment(msg.data));
+        } else if (msg.type === "risk_report") {
+          s.setRiskReport(msg.data);
+        } else if (msg.type === "treasury_analysis") {
+          s.setTreasuryAnalysis(msg.data);
+        } else if (msg.type === "invoice_ready") {
+          s.setLatestInvoiceMeta({
+            invoice_id: msg.data.invoice_id,
+            period_start: msg.data.period_start,
+            period_end: msg.data.period_end,
+            total_sol: msg.data.total_sol,
+            total_transactions: msg.data.total_transactions,
+            pdf_path: msg.data.pdf_path,
+          });
         }
       };
 

@@ -78,11 +78,18 @@ desktop.ini
 *.pdf
 *.listing
 
-# ── Grant / Research docs (private, not for public repo) ─────────────────────
+# ── Internal docs / Grant / Research (private, not for public repo) ──────────
+CLAUDE.md
+PRE_SHIP_CHECKLIST.md
 STIE_GRANT_APPLICATION.md
 STIE_GRANT_APPLICATION.tex
 AUXIN_AUTOMATA_DEEP_DIVE.md
 auxin_automata_grant_application.tex
+auxin_automata_overview.tex
+auxin_automata_phases.tex
+auxin_automata_prompts.tex
+auxin_financial_intelligence_plan.tex
+scripts/seed_machine_treasury.ts
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
 *.lock

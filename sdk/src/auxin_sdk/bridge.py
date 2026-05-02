@@ -34,9 +34,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -48,12 +51,17 @@ from prometheus_client import start_http_server as _prom_start
 
 from .fixtures import sample_workspace_image
 from .hashing import sha256_hex
+from .invoicing.generator import InvoiceGenerator
 from .logging import bind_request_id
 from .oracle import OracleDecision, SafetyOracle
 from .privacy.base import PaymentResult, PrivacyProvider
 from .program.client import AuxinProgramClient
+from .risk.scorer import calculate_risk_score
+from .risk.types import RiskReport
 from .schema import TelemetryFrame
 from .sources.base import TelemetrySource
+from .treasury.agent import TreasuryAgent
+from .treasury.types import TreasuryAnalysis
 from .wallet import HardwareWallet
 
 log = structlog.get_logger(__name__)
@@ -97,6 +105,14 @@ REASON_CODE_ORACLE_DENIED = 0x0002
 MAX_BLOCKHASH_RETRIES = 3
 PRIORITY_FEE_FALLBACK_MICRO_LAMPORTS = 1_000
 COMPLIANCE_DRAIN_TIMEOUT_S = 30.0
+
+# Financial intelligence intervals (configurable via env)
+_RISK_INTERVAL_S = int(os.getenv("AUXIN_RISK_INTERVAL_S", "60"))
+_TREASURY_INTERVAL_S = int(os.getenv("AUXIN_TREASURY_INTERVAL_S", "120"))
+_INVOICE_INTERVAL_H = float(os.getenv("AUXIN_INVOICE_INTERVAL_H", "24"))
+
+# Default throttle multiplier applied when treasury flags critical runway
+_THROTTLE_MULTIPLIER = 2.5
 
 
 # ── Internal task types ───────────────────────────────────────────────────────
@@ -428,6 +444,28 @@ class Bridge:
 
         self._running: bool = False
 
+        # ── Financial Intelligence ─────────────────────────────────────────────
+        # In-memory payment / compliance accumulators (ring-buffer for scoring)
+        self._payment_log: list[dict[str, Any]] = []
+        self._compliance_log: list[dict[str, Any]] = []
+        self._payment_log_max = 5_000  # keep last 5k payments
+
+        # Latest snapshots (None until first computation)
+        self._latest_risk_report: RiskReport | None = None
+        self._latest_treasury_analysis: TreasuryAnalysis | None = None
+        self._latest_invoice_path: Path | None = None
+
+        # Treasury agent — lazy init (needs API key from env)
+        self._treasury_agent: TreasuryAgent | None = None
+
+        # Invoice generator
+        self._invoice_generator = InvoiceGenerator()
+
+        # Oracle-check interval multiplier (1.0 = normal, >1.0 = throttled)
+        self._oracle_interval_multiplier: float = 1.0
+        # Per-payment lamport multiplier (1.0 = normal, <1.0 = reduced)
+        self._payment_lamport_multiplier: float = 1.0
+
     # ── Public ────────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
@@ -452,9 +490,16 @@ class Bridge:
         if self._healthz_port > 0:
             await self._start_healthz()
 
+        # Initialise treasury agent (lazy — only if API key is set)
+        api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("GEMINI_API_KEY")
+        self._treasury_agent = TreasuryAgent(api_key=api_key)
+
         workers = [
             asyncio.create_task(self._compliance_worker(), name="compliance-worker"),
             asyncio.create_task(self._payment_worker(), name="payment-worker"),
+            asyncio.create_task(self._risk_scoring_worker(), name="risk-scoring-worker"),
+            asyncio.create_task(self._treasury_worker(), name="treasury-worker"),
+            asyncio.create_task(self._invoice_worker(), name="invoice-worker"),
         ]
 
         try:
@@ -588,18 +633,24 @@ class Bridge:
                         "kind": "compliance",
                         "severity": task.severity,
                     }
+                    event_data = {
+                        "hash": task.telemetry_hash,
+                        "severity": task.severity,
+                        "reason_code": task.reason_code,
+                        "signature": sig,
+                        "flags": task.frame.anomaly_flags,
+                        "timestamp": task.frame.timestamp.isoformat(),
+                    }
+                    # Accumulate for risk scorer / invoice generator
+                    self._compliance_log.append({
+                        "timestamp": task.frame.timestamp.isoformat(),
+                        "severity": task.severity,
+                        "reason_code": task.reason_code,
+                        "hash": task.telemetry_hash,
+                        "tx_signature": sig,
+                    })
                     await self.ws_broadcaster.broadcast(
-                        {
-                            "type": "compliance_event",
-                            "data": {
-                                "hash": task.telemetry_hash,
-                                "severity": task.severity,
-                                "reason_code": task.reason_code,
-                                "signature": sig,
-                                "flags": task.frame.anomaly_flags,
-                                "timestamp": task.frame.timestamp.isoformat(),
-                            },
-                        }
+                        {"type": "compliance_event", "data": event_data}
                     )
             except Exception as exc:
                 _TX_TOTAL.labels(kind="compliance", status="error").inc()
@@ -646,18 +697,32 @@ class Bridge:
                         if result.tx_signature:
                             _TX_TOTAL.labels(kind="payment", status="ok").inc()
                             self._payments_total += 1
+                            effective_lamports = int(
+                                PAYMENT_AMOUNT_LAMPORTS * self._payment_lamport_multiplier
+                            )
                             self._last_successful_tx = {
                                 "signature": result.tx_signature,
                                 "kind": "payment",
-                                "amount_lamports": PAYMENT_AMOUNT_LAMPORTS,
+                                "amount_lamports": effective_lamports,
                                 "privacy_provider": result.privacy_provider,
                             }
+                            payment_entry = {
+                                "timestamp": task.frame.timestamp.isoformat(),
+                                "lamports": effective_lamports,
+                                "provider": str(self.provider_pubkey),
+                                "tx_signature": result.tx_signature,
+                                "success": True,
+                            }
+                            # Accumulate for risk scorer / invoice (ring buffer)
+                            self._payment_log.append(payment_entry)
+                            if len(self._payment_log) > self._payment_log_max:
+                                self._payment_log = self._payment_log[-self._payment_log_max:]
                             await self.ws_broadcaster.broadcast(
                                 {
                                     "type": "payment_event",
                                     "data": {
                                         "signature": result.tx_signature,
-                                        "amount_lamports": PAYMENT_AMOUNT_LAMPORTS,
+                                        "amount_lamports": effective_lamports,
                                         "provider": str(self.provider_pubkey),
                                         "privacy_provider": result.privacy_provider,
                                         "is_private": result.is_private,
@@ -692,11 +757,195 @@ class Bridge:
             finally:
                 self._payment_queue.task_done()
 
+    # ── Financial Intelligence Workers ────────────────────────────────────────
+
+    async def _risk_scoring_worker(self) -> None:
+        """
+        Compute the Machine Health Score every AUXIN_RISK_INTERVAL_S seconds.
+        Broadcasts RiskReport via WebSocket. Never blocks the main telemetry loop.
+        """
+        log.info("risk_scoring_worker.started", interval_s=_RISK_INTERVAL_S)
+        while True:
+            try:
+                await asyncio.sleep(_RISK_INTERVAL_S)
+                balance_sol = await self._get_balance_sol()
+                report = calculate_risk_score(
+                    payment_history=list(self._payment_log),
+                    compliance_history=list(self._compliance_log),
+                    balance=balance_sol,
+                    tx_count=self._payments_total,
+                )
+                self._latest_risk_report = report
+                await self.ws_broadcaster.broadcast(
+                    {
+                        "type": "risk_report",
+                        "data": report.model_dump(mode="json"),
+                    }
+                )
+                log.info(
+                    "risk_scoring_worker.broadcast",
+                    score=report.overall_score,
+                    grade=report.grade,
+                    trend=report.trend,
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log.error("risk_scoring_worker.error", error=str(exc))
+
+    async def _treasury_worker(self) -> None:
+        """
+        Run the AI treasury analysis every AUXIN_TREASURY_INTERVAL_S seconds.
+        If a critical auto_executable action is returned, the bridge adjusts its
+        own behaviour within pre-defined safe bounds (throttle / reduce lamports).
+        The treasury agent NEVER signs transactions or transfers funds.
+        """
+        log.info("treasury_worker.started", interval_s=_TREASURY_INTERVAL_S)
+        while True:
+            try:
+                await asyncio.sleep(_TREASURY_INTERVAL_S)
+                if self._treasury_agent is None:
+                    continue
+                balance_sol = await self._get_balance_sol()
+                analysis = await self._treasury_agent.analyze(
+                    payment_history=list(self._payment_log),
+                    compliance_history=list(self._compliance_log),
+                    balance=balance_sol,
+                    risk_report=self._latest_risk_report,
+                )
+                self._latest_treasury_analysis = analysis
+
+                # Apply auto-executable critical actions within safe bounds
+                for action in analysis.recommended_actions:
+                    if action.auto_executable and action.priority == "critical":
+                        if "throttle" in action.action.lower():
+                            self._oracle_interval_multiplier = _THROTTLE_MULTIPLIER
+                            log.warning(
+                                "treasury_worker.throttling_applied",
+                                multiplier=_THROTTLE_MULTIPLIER,
+                                reason=action.reasoning,
+                            )
+                            await self.ws_broadcaster.broadcast(
+                                {
+                                    "type": "bridge_adjustment",
+                                    "data": {
+                                        "kind": "throttle_inference",
+                                        "multiplier": _THROTTLE_MULTIPLIER,
+                                        "reason": action.reasoning,
+                                    },
+                                }
+                            )
+                        if "reserve" in action.action.lower():
+                            self._payment_lamport_multiplier = 0.7
+                            log.warning(
+                                "treasury_worker.reserve_increase_applied",
+                                lamport_multiplier=0.7,
+                                reason=action.reasoning,
+                            )
+                            await self.ws_broadcaster.broadcast(
+                                {
+                                    "type": "bridge_adjustment",
+                                    "data": {
+                                        "kind": "increase_reserve",
+                                        "lamport_multiplier": 0.7,
+                                        "reason": action.reasoning,
+                                    },
+                                }
+                            )
+
+                # If runway recovered, reset throttle
+                if analysis.runway_status == "healthy":
+                    if self._oracle_interval_multiplier > 1.0:
+                        self._oracle_interval_multiplier = 1.0
+                        log.info("treasury_worker.throttle_reset")
+                    if self._payment_lamport_multiplier < 1.0:
+                        self._payment_lamport_multiplier = 1.0
+                        log.info("treasury_worker.lamport_multiplier_reset")
+
+                await self.ws_broadcaster.broadcast(
+                    {
+                        "type": "treasury_analysis",
+                        "data": analysis.model_dump(mode="json"),
+                    }
+                )
+                log.info(
+                    "treasury_worker.broadcast",
+                    runway_h=analysis.runway_hours,
+                    status=analysis.runway_status,
+                    fallback=analysis.used_fallback,
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log.error("treasury_worker.error", error=str(exc))
+
+    async def _invoice_worker(self) -> None:
+        """
+        Generate an invoice every AUXIN_INVOICE_INTERVAL_H hours.
+        Saves PDF + JSON to the invoice output directory and notifies the dashboard.
+        """
+        interval_s = _INVOICE_INTERVAL_H * 3600
+        log.info("invoice_worker.started", interval_h=_INVOICE_INTERVAL_H)
+        while True:
+            try:
+                await asyncio.sleep(interval_s)
+                now = datetime.now(timezone.utc)
+                period_start = now - timedelta(hours=_INVOICE_INTERVAL_H)
+
+                invoice = await self._invoice_generator.generate(
+                    payment_history=list(self._payment_log),
+                    compliance_history=list(self._compliance_log),
+                    period_start=period_start,
+                    period_end=now,
+                    hardware_agent_pubkey=str(self.owner_pubkey),
+                    risk_report=self._latest_risk_report,
+                    treasury_analysis=self._latest_treasury_analysis,
+                )
+                self._invoice_generator.render_json(invoice)
+                pdf_path = self._invoice_generator.render_pdf(invoice)
+                self._latest_invoice_path = pdf_path
+
+                await self.ws_broadcaster.broadcast(
+                    {
+                        "type": "invoice_ready",
+                        "data": {
+                            "invoice_id": invoice.invoice_id,
+                            "period_start": invoice.period_start.isoformat(),
+                            "period_end": invoice.period_end.isoformat(),
+                            "total_sol": invoice.total_sol,
+                            "total_transactions": invoice.total_transactions,
+                            "pdf_path": str(pdf_path),
+                        },
+                    }
+                )
+                log.info(
+                    "invoice_worker.generated",
+                    invoice_id=invoice.invoice_id,
+                    total_sol=invoice.total_sol,
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log.error("invoice_worker.error", error=str(exc))
+
+    async def _get_balance_sol(self) -> float:
+        """Fetch the current wallet balance in SOL. Returns 0.0 on failure."""
+        try:
+            from solana.rpc.commitment import Confirmed
+
+            resp = await self.program_client._rpc.get_balance(
+                self.owner_pubkey, commitment=Confirmed
+            )
+            return resp.value / 1_000_000_000
+        except Exception:
+            return 0.0
+
     # ── Health endpoint ───────────────────────────────────────────────────────
 
     async def _start_healthz(self, host: str = "0.0.0.0") -> None:  # pragma: no cover
         app = aiohttp.web.Application()
         app.router.add_get("/healthz", self._healthz_handler)
+        app.router.add_get("/invoice/latest", self._invoice_latest_handler)
         self._health_runner = aiohttp.web.AppRunner(app)
         await self._health_runner.setup()
         self._health_site = aiohttp.web.TCPSite(self._health_runner, host, self._healthz_port)
@@ -707,6 +956,20 @@ class Bridge:
         if self._health_runner is not None:
             await self._health_runner.cleanup()
             log.info("healthz.stopped")
+
+    async def _invoice_latest_handler(  # pragma: no cover
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """GET /invoice/latest — return the most recent invoice PDF."""
+        if self._latest_invoice_path is None or not self._latest_invoice_path.exists():
+            return aiohttp.web.Response(status=404, text="No invoice generated yet")
+        return aiohttp.web.FileResponse(
+            self._latest_invoice_path,
+            headers={
+                "Content-Disposition": f"attachment; filename={self._latest_invoice_path.name}",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
 
     async def _healthz_handler(  # pragma: no cover
         self, request: aiohttp.web.Request

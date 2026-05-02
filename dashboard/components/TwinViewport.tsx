@@ -221,7 +221,7 @@ export function TwinViewport({
       <div className="card-header-teal flex items-center justify-between px-4 py-3 shrink-0">
         <div className="flex items-center gap-2">
           <Cpu className="h-4 w-4" style={{ color: "#14b8a6" }} />
-          <span className="text-xs font-bold tracking-[0.22em] uppercase text-gradient-purple-green">
+          <span className="twin-title-cycle text-xs font-bold tracking-[0.22em] uppercase">
             Digital Twin — Franka Panda
           </span>
         </div>
@@ -267,7 +267,12 @@ export function TwinViewport({
       </div>
 
       {/* Viewport */}
-      <div className="relative flex-1 min-h-[280px]">
+      <div className="crt-overlay relative flex-1 min-h-[280px]">
+        {/* HUD corner brackets */}
+        <div className={`hud-corner-tl${showJpeg ? "" : ""}`} aria-hidden />
+        <div className="hud-corner-tr" aria-hidden />
+        <div className="hud-corner-bl" aria-hidden />
+        <div className="hud-corner-br" aria-hidden />
         {/* ── PyBullet JPEG stream overlay ── */}
         {showJpeg ? (
           <div className="absolute inset-0 flex items-center justify-center bg-[#070b14]">

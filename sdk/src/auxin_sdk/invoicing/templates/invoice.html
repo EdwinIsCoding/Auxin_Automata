@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Compute Invoice {{ invoice.invoice_id[:8] }}</title>
+  <style>
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --border: rgba(20, 184, 166, 0.20);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --teal: #14b8a6;
+      --purple: #a855f7;
+      --cream: #fefce8;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --orange: #f97316;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 2rem 2.5rem;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .logo-block { display: flex; flex-direction: column; gap: 0.25rem; }
+
+    .logo-wordmark {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--teal), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-tagline { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+
+    .invoice-meta { text-align: right; }
+    .invoice-title { font-size: 1.2rem; font-weight: 600; color: var(--cream); margin-bottom: 0.35rem; }
+    .invoice-id   { font-size: 0.75rem; color: var(--teal); font-family: monospace; }
+    .invoice-dates { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; }
+
+    /* ── Section titles ── */
+    .section { margin-bottom: 1.75rem; }
+    .section-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--teal);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+      margin-bottom: 0.75rem;
+    }
+
+    /* ── Agent info ── */
+    .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 2rem; }
+    .kv-label { font-size: 0.7rem; color: var(--muted); }
+    .kv-value { font-family: monospace; font-size: 0.78rem; color: var(--cream); word-break: break-all; }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+    th {
+      text-align: left;
+      font-size: 0.67rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 0.38rem 0.6rem; border-bottom: 1px solid rgba(20, 184, 166, 0.07); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(20, 184, 166, 0.04); }
+
+    .mono { font-family: monospace; }
+    .text-right { text-align: right; }
+    .text-muted { color: var(--muted); }
+    .teal { color: var(--teal); }
+
+    /* ── Tx link ── */
+    a { color: var(--teal); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Provider subtotals ── */
+    .subtotals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
+    .subtotal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.7rem 1rem;
+    }
+    .subtotal-provider { font-family: monospace; font-size: 0.72rem; color: var(--teal); margin-bottom: 0.25rem; }
+    .subtotal-amount   { font-size: 1rem; font-weight: 600; color: var(--cream); }
+    .subtotal-count    { font-size: 0.68rem; color: var(--muted); }
+
+    /* ── Compliance severity badges ── */
+    .sev-badge {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 3px;
+      font-size: 0.67rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .sev-0 { background: rgba(20, 184, 166, 0.15); color: #14b8a6; }
+    .sev-1 { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .sev-2 { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+    .sev-3 { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+    /* ── Totals row ── */
+    .totals-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.9rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.75rem;
+    }
+    .total-label { font-size: 0.75rem; color: var(--muted); }
+    .total-value { font-size: 1.1rem; font-weight: 700; color: var(--cream); }
+    .total-sol   { font-size: 0.8rem; color: var(--teal); margin-left: 0.5rem; }
+
+    /* ── Footer ── */
+    .footer {
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
+      padding-top: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .footer-score {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .score-pill {
+      background: rgba(20, 184, 166, 0.12);
+      color: var(--teal);
+      border: 1px solid rgba(20, 184, 166, 0.25);
+      border-radius: 20px;
+      padding: 0.15rem 0.65rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .footer-brand { font-size: 0.68rem; color: var(--muted); text-align: right; }
+    .treasury-summary {
+      background: var(--surface);
+      border-left: 3px solid var(--purple);
+      padding: 0.65rem 1rem;
+      border-radius: 0 4px 4px 0;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+      width: 100%;
+    }
+
+    /* ── Print overrides ── */
+    @media print {
+      body { background: #fff; color: #111; --bg: #fff; --surface: #f9f9f9; --text: #111; --muted: #555; --teal: #0d9488; --cream: #111; --border: rgba(0,0,0,0.12); }
+      a { color: #0d9488; }
+      .logo-wordmark { -webkit-text-fill-color: #0d9488; }
+      .score-pill { border-color: rgba(13,148,136,0.25); }
+      .treasury-summary { border-left-color: #7c3aed; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <header class="header">
+    <div class="logo-block">
+      <div class="logo-wordmark">⟡ Auxin Automata</div>
+      <div class="logo-tagline">Autonomous hardware on Solana</div>
+    </div>
+    <div class="invoice-meta">
+      <div class="invoice-title">Compute Invoice</div>
+      <div class="invoice-id">{{ invoice.invoice_id }}</div>
+      <div class="invoice-dates">
+        Generated {{ invoice.generated_at.strftime('%Y-%m-%d %H:%M UTC') }}<br/>
+        Period {{ invoice.period_start.strftime('%Y-%m-%d') }} – {{ invoice.period_end.strftime('%Y-%m-%d') }}
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Hardware agent info ── -->
+  <section class="section">
+    <div class="section-title">Hardware Agent</div>
+    <div class="agent-grid">
+      <div>
+        <div class="kv-label">Wallet Public Key</div>
+        <div class="kv-value">{{ invoice.hardware_agent_pubkey or '—' }}</div>
+      </div>
+      <div>
+        <div class="kv-label">Billing Period</div>
+        <div class="kv-value">{{ invoice.period_start.strftime('%Y-%m-%d') }} → {{ invoice.period_end.strftime('%Y-%m-%d') }}</div>
+      </div>
+      <div>
+        <div class="kv-label">Total Transactions</div>
+        <div class="kv-value">{{ invoice.total_transactions }}</div>
+      </div>
+      <div>
+        <div class="kv-label">Compliance Events</div>
+        <div class="kv-value">{{ invoice.total_compliance_events }}</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Line items ── -->
+  <section class="section">
+    <div class="section-title">Payment Line Items</div>
+    {% if invoice.line_items %}
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Provider</th>
+          <th>Category</th>
+          <th class="text-right">Lamports</th>
+          <th class="text-right">SOL</th>
+          <th>Tx Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in invoice.line_items %}
+        <tr>
+          <td class="mono text-muted">{{ item.timestamp.strftime('%m-%d %H:%M') }}</td>
+          <td class="mono teal">
+            {% if item.provider_pubkey|length > 16 %}
+              {{ item.provider_pubkey[:8] }}…{{ item.provider_pubkey[-6:] }}
+            {% else %}
+              {{ item.provider_pubkey }}
+            {% endif %}
+          </td>
+          <td class="text-muted">{{ item.category }}</td>
+          <td class="text-right mono">{{ '{:,}'.format(item.lamports) }}</td>
+          <td class="text-right mono teal">{{ '%.6f'|format(item.sol_amount) }}</td>
+          <td class="mono" style="font-size:0.68rem;">
+            {% if item.tx_signature %}
+              <a href="{{ explorer_base }}/{{ item.tx_signature }}?cluster=devnet" target="_blank">
+                {{ item.tx_signature[:12] }}…
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="text-muted" style="font-size:0.75rem;">No payments in this period.</p>
+    {% endif %}
+  </section>
+
+  <!-- ── Provider subtotals ── -->
+  {% if provider_subtotals %}
+  <section class="section">
+    <div class="section-title">Provider Subtotals</div>
+    <div class="subtotals-grid">
+      {% for pk, sub in provider_subtotals.items() %}
+      <div class="subtotal-card">
+        <div class="subtotal-provider">{{ sub.pubkey_short }}</div>
+        <div class="subtotal-amount">{{ '%.6f'|format(sub.sol) }} SOL</div>
+        <div class="subtotal-count">{{ '{:,}'.format(sub.lamports) }} lamports · {{ sub.count }} txs</div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ── Totals ── -->
+  <div class="totals-bar">
+    <div>
+      <div class="total-label">Total Compute Spend</div>
+    </div>
+    <div style="text-align:right;">
+      <span class="total-value">{{ '{:,}'.format(invoice.total_lamports) }} lamports</span>
+      <span class="total-sol">{{ '%.9f'|format(invoice.total_sol) }} SOL</span>
+    </div>
+  </div>
+
+  <!-- ── Compliance summary ── -->
+  <section class="section" style="margin-top:1.75rem;">
+    <div class="section-title">Compliance Events</div>
+    {% if invoice.compliance_summary %}
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Severity</th>
+          <th>Reason Code</th>
+          <th>Hash</th>
+          <th>Tx Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in invoice.compliance_summary %}
+        <tr>
+          <td class="mono text-muted">{{ ev.timestamp.strftime('%Y-%m-%d %H:%M UTC') }}</td>
+          <td>
+            <span class="sev-badge sev-{{ ev.severity }}">SEV-{{ ev.severity }}</span>
+          </td>
+          <td class="mono text-muted">0x{{ '%04X'|format(ev.reason_code) }}</td>
+          <td class="mono" style="font-size:0.68rem; color:#9ca3af;">{{ ev.hash[:24] }}…</td>
+          <td class="mono" style="font-size:0.68rem;">
+            {% if ev.tx_signature %}
+              <a href="{{ explorer_base }}/{{ ev.tx_signature }}?cluster=devnet" target="_blank">
+                {{ ev.tx_signature[:12] }}…
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="text-muted" style="font-size:0.75rem;">No compliance events in this period. ✓</p>
+    {% endif %}
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="footer">
+    <div>
+      {% if invoice.risk_score_at_generation is not none %}
+      <div class="footer-score">
+        Machine Health Score at generation:
+        <span class="score-pill">{{ invoice.risk_score_at_generation | round(1) }}</span>
+      </div>
+      {% endif %}
+      {% if invoice.treasury_summary %}
+      <div class="treasury-summary">
+        <strong style="color:#a855f7;">AI Treasury Agent:</strong> {{ invoice.treasury_summary }}
+      </div>
+      {% endif %}
+    </div>
+    <div class="footer-brand">
+      Generated automatically by Auxin Automata<br/>
+      auxin-sdk v1.0 · Solana Devnet<br/>
+      <span style="color:#14b8a6;">auxin-automata.xyz</span>
+    </div>
+  </footer>
+
+</body>
+</html>

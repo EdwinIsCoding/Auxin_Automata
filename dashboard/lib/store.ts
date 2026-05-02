@@ -35,6 +35,59 @@ export interface ComplianceLog {
   txSignature: string;
 }
 
+// ── Financial Intelligence types (mirroring Python SDK) ───────────────────────
+
+export interface RiskBreakdown {
+  category: string;
+  score: number;
+  weight: number;
+  factors: string[];
+}
+
+export interface RiskReport {
+  overall_score: number;
+  grade: string;
+  breakdown: RiskBreakdown[];
+  trend: "improving" | "stable" | "declining";
+  trend_data: { date: string; score: number }[];
+  computed_at: string;
+}
+
+export interface BudgetAllocation {
+  inference: number;
+  reserve: number;
+  buffer: number;
+}
+
+export interface RecommendedAction {
+  action: string;
+  priority: "low" | "medium" | "high" | "critical";
+  reasoning: string;
+  auto_executable: boolean;
+}
+
+export interface TreasuryAnalysis {
+  burn_rate_lamports_per_hour: number;
+  runway_hours: number;
+  runway_status: "healthy" | "warning" | "critical";
+  budget_allocation: BudgetAllocation;
+  recommended_actions: RecommendedAction[];
+  anomaly_flags: string[];
+  summary: string;
+  risk_score_context: number | null;
+  analyzed_at: string;
+  used_fallback: boolean;
+}
+
+export interface InvoiceMeta {
+  invoice_id: string;
+  period_start: string;
+  period_end: string;
+  total_sol: number;
+  total_transactions: number;
+  pdf_path: string;
+}
+
 export type WsStatus = "connecting" | "live" | "disconnected";
 
 interface AuxinStore {
@@ -46,12 +99,22 @@ interface AuxinStore {
   /** Reflects the current bridge WebSocket connection state. */
   wsStatus: WsStatus;
 
+  // Financial Intelligence
+  riskReport: RiskReport | null;
+  treasuryAnalysis: TreasuryAnalysis | null;
+  latestInvoiceMeta: InvoiceMeta | null;
+
   setTelemetry: (frame: TelemetryFrame) => void;
   addPayment: (payment: PaymentEvent) => void;
   addComplianceLog: (log: ComplianceLog) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setWsStatus: (status: WsStatus) => void;
+
+  // Financial Intelligence setters
+  setRiskReport: (report: RiskReport) => void;
+  setTreasuryAnalysis: (analysis: TreasuryAnalysis) => void;
+  setLatestInvoiceMeta: (meta: InvoiceMeta) => void;
 }
 
 export const useAuxinStore = create<AuxinStore>((set) => ({
@@ -61,6 +124,11 @@ export const useAuxinStore = create<AuxinStore>((set) => ({
   isLoading: true,
   error: null,
   wsStatus: "connecting",
+
+  // Financial Intelligence initial state
+  riskReport: null,
+  treasuryAnalysis: null,
+  latestInvoiceMeta: null,
 
   setTelemetry: (frame) => set({ telemetry: frame }),
 
@@ -77,4 +145,9 @@ export const useAuxinStore = create<AuxinStore>((set) => ({
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   setWsStatus: (wsStatus) => set({ wsStatus }),
+
+  // Financial Intelligence
+  setRiskReport: (riskReport) => set({ riskReport }),
+  setTreasuryAnalysis: (treasuryAnalysis) => set({ treasuryAnalysis }),
+  setLatestInvoiceMeta: (latestInvoiceMeta) => set({ latestInvoiceMeta }),
 }));

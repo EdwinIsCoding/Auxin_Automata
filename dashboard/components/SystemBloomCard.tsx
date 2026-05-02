@@ -30,7 +30,7 @@ export function SystemBloomCard() {
   }, [telemetry, payments, complianceLogs]);
 
   return (
-    <section className="card-surface relative h-full overflow-visible px-3.5 py-2.5">
+    <section className="card-surface bloom-scan relative h-full overflow-visible px-3.5 py-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Leaf className="h-4 w-4" style={{ color: "#14F195" }} />
@@ -74,13 +74,30 @@ export function SystemBloomCard() {
           { label: "safety", value: safetyBloom, color: "#A855F7" },
         ].map((metric) => (
           <div key={metric.label} className="rounded-lg border px-2 py-1" style={{ borderColor: `${metric.color}33` }}>
-            <p className="mb-0.5 text-[8px] uppercase tracking-[0.14em]" style={{ color: "#64748b" }}>
+            <p className="label-chip mb-0.5" style={{ color: "#64748b" }}>
               {metric.label}
             </p>
-            <div className="h-1 overflow-hidden rounded-full" style={{ backgroundColor: "rgba(51,65,85,0.5)" }}>
+            <div
+              className="h-1.5 overflow-hidden rounded"
+              style={{
+                backgroundColor: "rgba(51,65,85,0.5)",
+                boxShadow: `inset 0 1px 3px rgba(0,0,0,0.5)`,
+                borderRadius: 4,
+              }}
+            >
               <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${metric.value}%`, backgroundColor: metric.color }}
+                className="h-full transition-all duration-500"
+                style={{
+                  width: `${metric.value}%`,
+                  borderRadius: 4,
+                  background:
+                    metric.color === "#14b8a6"
+                      ? "linear-gradient(90deg, #14b8a6, #14F195)"
+                      : metric.color === "#14F195"
+                      ? "linear-gradient(90deg, #14F195, #a3ffda)"
+                      : "linear-gradient(90deg, #A855F7, #C084FC)",
+                  boxShadow: `0 0 12px ${metric.color}99`,
+                }}
               />
             </div>
           </div>

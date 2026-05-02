@@ -50,13 +50,12 @@ export function Header() {
 
   return (
     <header
-      className="w-full border-b px-6 py-3 flex items-center justify-between shrink-0"
+      className="header-underline w-full px-6 py-3 flex items-center justify-between shrink-0"
       style={{
-        backgroundColor: "rgba(7, 11, 20, 0.80)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        borderColor: "rgba(168,85,247,0.20)",
-        boxShadow: "0 1px 0 rgba(168,85,247,0.08), 0 4px 24px rgba(0,0,0,0.5)",
+        backgroundColor: "rgba(7, 11, 20, 0.85)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        boxShadow: "0 -1px 0 rgba(168,85,247,0.10) inset, 0 4px 32px rgba(0,0,0,0.6), 0 0 60px -20px rgba(168,85,247,0.18)",
       }}
     >
       {/* Left: brand */}
@@ -142,9 +141,23 @@ export function Header() {
         >
           {wsStatus === "live" && (
             <span className="relative flex h-2 w-2">
+              {/* Outer ring — slower */}
               <span
-                className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-                style={{ backgroundColor: cfg.color }}
+                className="absolute inline-flex h-full w-full rounded-full"
+                style={{
+                  backgroundColor: cfg.color,
+                  animation: "ripple-ring 2s ease-out infinite",
+                  animationDelay: "0s",
+                }}
+              />
+              {/* Inner ring — faster offset */}
+              <span
+                className="absolute inline-flex h-full w-full rounded-full"
+                style={{
+                  backgroundColor: cfg.color,
+                  animation: "ripple-ring 2s ease-out infinite",
+                  animationDelay: "0.7s",
+                }}
               />
               <span
                 className="relative inline-flex rounded-full h-2 w-2"

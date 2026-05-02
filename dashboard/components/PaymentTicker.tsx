@@ -72,7 +72,7 @@ export function PaymentTicker() {
       </div>
 
       {/* Animated payment rows */}
-      <div className="scroll-tech flex-1 overflow-y-auto font-mono text-xs">
+      <div className="payment-bg scroll-tech flex-1 overflow-y-auto font-mono text-xs">
         <AnimatePresence initial={false}>
           {payments.map((p, i) => (
             <motion.div
@@ -81,10 +81,10 @@ export function PaymentTicker() {
               animate={{ opacity: 1, y: 0, rotateX: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.40, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-center gap-2 px-4 py-2 border-b transition-colors hover:bg-white/[0.03]"
+              className={`row-interactive relative z-10 flex items-center gap-1.5 px-3 py-1.5 border-b hover:bg-white/[0.03] ${i === 0 ? "pay-newest" : ""}`}
               style={{
                 borderColor: "rgba(20,241,149,0.07)",
-                backgroundColor: i === 0 ? "rgba(20,241,149,0.06)" : undefined,
+                backgroundColor: i === 0 ? undefined : undefined,
               }}
             >
               {/* Newest-row green dot */}
@@ -112,10 +112,12 @@ export function PaymentTicker() {
                 </span>
               ) : (
                 <span
-                  className="shrink-0 w-24 tabular-nums font-bold"
+                  className="value-primary shrink-0 w-24 text-sm font-mono"
                   style={{
                     color: "#14F195",
-                    textShadow: i === 0 ? "0 0 10px rgba(20,241,149,0.5)" : "none",
+                    textShadow: i === 0
+                      ? "0 0 14px rgba(20,241,149,0.7), 0 0 6px rgba(20,241,149,0.4)"
+                      : "0 0 8px rgba(20,241,149,0.3)",
                   }}
                 >
                   ◎ {lamportsToSol(p.lamports)}
