@@ -53,7 +53,7 @@ services:
       TWIN_WS_URL: ws://twin:8765
       BRIDGE_WS_PORT: "8766"
       BRIDGE_HEALTHZ_PORT: "8767"
-      HELIUS_RPC_URL: "${HELIUS_RPC_URL:-https://devnet.helius-rpc.com/?api-key=REDACTED_KEY}"
+      HELIUS_RPC_URL: "${HELIUS_RPC_URL}"
       SOLANA_RPC_URL: "${SOLANA_RPC_URL:-https://api.devnet.solana.com}"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       PROVIDER_PUBKEY: "${PROVIDER_PUBKEY:-}"

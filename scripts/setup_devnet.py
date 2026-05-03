@@ -33,10 +33,11 @@ from auxin_sdk.wallet import HardwareWallet
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-RPC_URL = os.environ.get(
-    "HELIUS_RPC_URL",
-    "https://devnet.helius-rpc.com/?api-key=REDACTED_KEY",
-)
+RPC_URL = os.environ.get("HELIUS_RPC_URL")
+if not RPC_URL:
+    raise RuntimeError(
+        "HELIUS_RPC_URL is not set. Add it to sdk/.env (see sdk/.env.example for format)."
+    )
 PROGRAM_ID = os.environ.get("AUXIN_PROGRAM_ID", "7sUSbF9zDN9QKVwA2ZGskg9gFgvbMuQpCdpt3hfgf1Mm")
 HW_PATH = Path(os.environ.get("HW_KEYPAIR_PATH", "~/.config/auxin/hardware.json")).expanduser()
 OWNER_PATH = Path(
