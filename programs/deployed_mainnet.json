@@ -1,0 +1,11 @@
+{
+  "program_id": "7sUSbF9zDN9QKVwA2ZGskg9gFgvbMuQpCdpt3hfgf1Mm",
+  "cluster": "mainnet",
+  "rpc_url": "https://mainnet.helius-rpc.com",
+  "deployer": "4DZ7gG1epGg6FdKn2LAXGXGwFphEA7mbwvCWZfX7YDfQ",
+  "authority": "4DZ7gG1epGg6FdKn2LAXGXGwFphEA7mbwvCWZfX7YDfQ",
+  "slot": 417657493,
+  "deployed_at": "2026-05-05T02:21:30Z",
+  "deploy_tx": "5wVJATiLnug7r2BaD5DpxqkcYwum644cjKK5aa8EKDhu6yyY5fzV8NW5QtrRKSmcy46UyqCQFDfZxZsGQ2DwfTkC",
+  "rent_sol": 1.54966488
+}

@@ -53,6 +53,7 @@ if _sentry_dsn:
     _sentry.init(dsn=_sentry_dsn, traces_sample_rate=0.2)
 
 from auxin_sdk.bridge import Bridge, WebsocketBroadcaster  # noqa: E402
+from auxin_sdk.config import get_cluster_config  # noqa: E402
 from auxin_sdk.logging import configure_structlog  # noqa: E402
 from auxin_sdk.oracle import SafetyOracle  # noqa: E402
 from auxin_sdk.privacy.base import PrivacyProvider  # noqa: E402
@@ -228,19 +229,39 @@ def _build_privacy_provider(
 async def main() -> None:
     configure_structlog()
 
+    # ── Cluster config ────────────────────────────────────────────────────────
+    cluster_cfg = get_cluster_config()
+
+    if cluster_cfg.cluster == "mainnet":
+        print()
+        print("*" * 60)
+        print("*** MAINNET MODE - REAL SOL WILL BE SPENT ***")
+        print(f"*** Program: {cluster_cfg.program_id} ***")
+        print("*" * 60)
+        print()
+
+    log.info(
+        "bridge.cluster",
+        cluster=cluster_cfg.cluster,
+        program_id=cluster_cfg.program_id,
+        rpc_url=cluster_cfg.rpc_url,
+    )
+    print(f"Bridge starting on [{cluster_cfg.cluster.upper()}] with program [{cluster_cfg.program_id}]")
+
     # ── Config from env ───────────────────────────────────────────────────────
     source_name = os.environ.get("AUXIN_SOURCE", "mock")
     privacy_name = os.environ.get("AUXIN_PRIVACY", "direct")
 
-    rpc_url = (
+    rpc_url = cluster_cfg.rpc_url or (
         os.environ.get("HELIUS_RPC_URL")
         or os.environ.get("SOLANA_RPC_URL")
         or "https://api.devnet.solana.com"
     )
 
-    program_id = os.environ.get("AUXIN_PROGRAM_ID")  # None → resolved from deployed.json
+    # AUXIN_PROGRAM_ID env var still overrides cluster config if set explicitly
+    program_id = os.environ.get("AUXIN_PROGRAM_ID") or cluster_cfg.program_id or None
 
-    hw_path = os.environ.get("HW_KEYPAIR_PATH", "~/.config/auxin/hardware.json")
+    hw_path = cluster_cfg.hardware_keypair_path or os.environ.get("HW_KEYPAIR_PATH", "~/.config/auxin/hardware.json")
     owner_path = os.environ.get("OWNER_KEYPAIR_PATH", "~/.config/auxin/owner.json")
 
     ws_port = int(os.environ.get("BRIDGE_WS_PORT", "8766"))

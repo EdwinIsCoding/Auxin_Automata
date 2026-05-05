@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { useAuxinStore, type ComplianceLog } from "@/lib/store";
+import { getExplorerUrl } from "@/lib/solana";
 import {
   Copy,
   Check,
@@ -118,7 +119,7 @@ function LogRow({ log, index }: { log: ComplianceLog; index: number }) {
       </td>
       <td className="px-2 py-1">
         <a
-          href={`https://explorer.solana.com/tx/${log.txSignature}?cluster=devnet`}
+          href={getExplorerUrl(log.txSignature)}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1 font-mono text-[10px] hover:opacity-80 transition-opacity"

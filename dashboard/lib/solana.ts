@@ -6,9 +6,13 @@
  *
  * Falls back to the public Devnet endpoint when NEXT_PUBLIC_HELIUS_RPC_URL
  * is unset so the mock build never requires env vars.
+ *
+ * Explorer links: use explorerUrl() from lib/cluster.ts rather than
+ * constructing https://explorer.solana.com URLs directly in components.
  */
 
 import { Connection, PublicKey } from "@solana/web3.js";
+import { detectCluster, explorerUrl as _explorerUrl, ACTIVE_CLUSTER } from "@/lib/cluster";
 
 // Deployed program ID — can be overridden via env for localnet testing.
 export const PROGRAM_ID_STR =
@@ -16,7 +20,12 @@ export const PROGRAM_ID_STR =
   "7sUSbF9zDN9QKVwA2ZGskg9gFgvbMuQpCdpt3hfgf1Mm";
 
 export const RPC_URL =
-  process.env.NEXT_PUBLIC_HELIUS_RPC_URL ?? "";
+  process.env.NEXT_PUBLIC_HELIUS_RPC_URL ??
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
+  "";
+
+/** The cluster inferred from the RPC URL at build time. */
+export const cluster = ACTIVE_CLUSTER;
 
 // Lazy singleton — created at most once per browser session.
 let _programId: PublicKey | null = null;
@@ -36,7 +45,7 @@ export function getProgramId(): PublicKey | null {
 }
 
 /**
- * Creates a new Solana Connection pointed at NEXT_PUBLIC_HELIUS_RPC_URL.
+ * Creates a new Solana Connection pointed at the configured RPC URL.
  * Automatically derives the wss:// WebSocket endpoint from the http(s):// URL.
  *
  * Returns null when no RPC URL is configured (mock-only mode).
@@ -50,4 +59,12 @@ export function makeConnection(): Connection | null {
     commitment: "confirmed",
     wsEndpoint,
   });
+}
+
+/**
+ * Returns a Solana Explorer link for the given transaction signature,
+ * using the cluster inferred from NEXT_PUBLIC_SOLANA_RPC_URL.
+ */
+export function getExplorerUrl(signature: string): string {
+  return _explorerUrl(signature, cluster);
 }

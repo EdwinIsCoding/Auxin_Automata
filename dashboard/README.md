@@ -99,6 +99,31 @@ The dashboard degrades gracefully if the bridge WebSocket or Solana RPC is unrea
 
 ---
 
+## Cluster Configuration
+
+The dashboard automatically detects the active Solana cluster from `NEXT_PUBLIC_SOLANA_RPC_URL` and adjusts all Explorer links and the Header badge accordingly.
+
+| Mode | Command | Env file loaded | Header badge |
+|---|---|---|---|
+| Local dev (Devnet) | `pnpm dev` | `.env.development` | Amber "DEVNET" |
+| Production build (Mainnet) | `pnpm build && pnpm start` | `.env.production` | Green "MAINNET" |
+| Vercel deployment | automatic | Vercel env settings | Green "MAINNET" |
+
+**Vercel deployment:**
+1. Push to `main` — Vercel picks it up automatically
+2. In the Vercel dashboard → Settings → Environment Variables, set:
+   - `NEXT_PUBLIC_SOLANA_RPC_URL` = `https://mainnet.helius-rpc.com/?api-key=YOUR_KEY`
+   - `NEXT_PUBLIC_HELIUS_RPC_URL` = same as above
+   - `NEXT_PUBLIC_PROGRAM_ID` = `7sUSbF9zDN9QKVwA2ZGskg9gFgvbMuQpCdpt3hfgf1Mm`
+   - `NEXT_PUBLIC_HARDWARE_WALLET` = `trPhnio8TMxUCo6bRC25cyyo2htEGJmNLDcgzDizeq9`
+   - `NEXT_PUBLIC_AGENT_PUBKEY` = `trPhnio8TMxUCo6bRC25cyyo2htEGJmNLDcgzDizeq9`
+   - `NEXT_PUBLIC_BRIDGE_WS_URL` = `wss://<VPS_DOMAIN>:8766`
+   - `NEXT_PUBLIC_BRIDGE_HTTP_URL` = `https://<VPS_DOMAIN>:8767`
+3. Do **not** commit `.env.production` — actual secrets go in Vercel's dashboard only
+4. CI/GitHub Actions only ever runs against Devnet — never mainnet
+
+---
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |

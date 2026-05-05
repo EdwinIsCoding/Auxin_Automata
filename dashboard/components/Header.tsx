@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Activity, Copy, Check, Cpu, Wifi, WifiOff, Loader2 } from "lucide-react";
 import { useAuxinStore } from "@/lib/store";
 import type { WsStatus } from "@/lib/store";
+import { ACTIVE_CLUSTER, clusterLabel, clusterColor } from "@/lib/cluster";
 
 // Falls back to the deployed agent PDA placeholder if the env var isn't set.
 const AGENT_PUBKEY =
@@ -108,6 +109,30 @@ export function Header() {
             <Copy className="h-3.5 w-3.5" style={{ color: "#6b21a8" }} />
           )}
         </button>
+      </div>
+
+      {/* Right-centre: cluster indicator */}
+      <div className="hidden sm:flex items-center">
+        <span
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-[0.18em] uppercase"
+          style={{
+            color: clusterColor(ACTIVE_CLUSTER),
+            backgroundColor: `${clusterColor(ACTIVE_CLUSTER)}14`,
+            border: `1px solid ${clusterColor(ACTIVE_CLUSTER)}33`,
+          }}
+        >
+          {ACTIVE_CLUSTER === "mainnet" && (
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{
+                backgroundColor: clusterColor(ACTIVE_CLUSTER),
+                boxShadow: `0 0 6px ${clusterColor(ACTIVE_CLUSTER)}`,
+                animation: "ripple-ring 2s ease-out infinite",
+              }}
+            />
+          )}
+          {clusterLabel(ACTIVE_CLUSTER)}
+        </span>
       </div>
 
       {/* Right: dynamic connection status */}

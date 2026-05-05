@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuxinStore } from "@/lib/store";
+import { getExplorerUrl } from "@/lib/solana";
 import { AnimatePresence, motion } from "framer-motion";
 import { ExternalLink, Loader2, Lock, Wallet } from "lucide-react";
 
@@ -139,7 +140,7 @@ export function PaymentTicker() {
               <div className="flex items-center gap-1 ml-auto shrink-0">
                 <span style={{ color: "#3d4663" }}>{truncateSig(p.txSignature)}</span>
                 <a
-                  href={`https://explorer.solana.com/tx/${p.txSignature}?cluster=devnet`}
+                  href={getExplorerUrl(p.txSignature)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:opacity-80 transition-opacity"

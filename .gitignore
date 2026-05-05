@@ -37,8 +37,10 @@ build/
 target/
 **/*.rs.bk
 .anchor/
-# Keep deployed.json (pinned program IDs)
+# Keep deployment records (pinned program IDs — no secrets, safe to commit)
 !programs/deployed.json
+!programs/deployed_devnet.json
+!programs/deployed_mainnet.json
 
 # ── Solana ───────────────────────────────────────────────────────────────────
 test-ledger/
@@ -52,8 +54,13 @@ test-ledger/
 .env.*.local
 .env.development
 .env.production
-# Keep .env.example files
+# Dual-cluster env files — contain real keys, never commit
+.env.devnet
+.env.mainnet
+# Keep example/template files
 !**/.env.example
+!**/.env.*.example
+!**/.env.production.example
 
 # ── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
@@ -89,7 +96,17 @@ auxin_automata_overview.tex
 auxin_automata_phases.tex
 auxin_automata_prompts.tex
 auxin_financial_intelligence_plan.tex
+Auxin_Mainnet_Deployment_Guide_v2.tex
 scripts/seed_machine_treasury.ts
+
+# ── Images / Media (not tracked in repo) ─────────────────────────────────────
+*.JPG
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.mov
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
 *.lock
