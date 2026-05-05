@@ -63,6 +63,9 @@ from solders.signature import Signature
 from solders.system_program import ID as SYS_PROGRAM_ID
 from solders.transaction import VersionedTransaction
 
+# Solana well-known sysvars
+SYSVAR_CLOCK_PUBKEY = Pubkey.from_string("SysvarC1ock11111111111111111111111111111111")
+
 from auxin_sdk.wallet import HardwareWallet
 
 log = structlog.get_logger(__name__)
@@ -144,9 +147,22 @@ def _find_provider_pda(program_id: Pubkey, provider: Pubkey) -> tuple[Pubkey, in
     return Pubkey.find_program_address([b"provider", bytes(provider)], program_id)
 
 
-def _find_compliance_log_pda(program_id: Pubkey, agent: Pubkey, slot: int) -> tuple[Pubkey, int]:
+def _find_compliance_log_pda(
+    program_id: Pubkey, agent: Pubkey, slot: int, sub_index: int = 0
+) -> tuple[Pubkey, int]:
+    """Derive the ComplianceLog PDA.
+
+    Seeds mirror the on-chain definition:
+      [b"log", agent_key, slot_le_u64, sub_index_u8]
+
+    `slot` must be the on-chain Clock slot at execution time — the client
+    queries get_slot() before building the transaction.  `sub_index` (0–255)
+    disambiguates two events that land in the same slot.
+    """
     slot_bytes = struct.pack("<Q", slot)
-    return Pubkey.find_program_address([b"log", bytes(agent), slot_bytes], program_id)
+    return Pubkey.find_program_address(
+        [b"log", bytes(agent), slot_bytes, bytes([sub_index])], program_id
+    )
 
 
 # ── Client ────────────────────────────────────────────────────────────────────
@@ -342,8 +358,13 @@ class AuxinProgramClient:
         """
         Write an immutable ComplianceLog PDA.
 
-        Signed by the hardware wallet.  Never rate-limited or budget-blocked.
-        Returns confirmed transaction signature.
+        Signed by the hardware wallet.  Never rate-limited or payment-budget-
+        blocked.  Returns confirmed transaction signature.
+
+        The PDA seed uses the on-chain Clock slot (not a caller-supplied value)
+        to prevent future-slot pre-claiming.  The client queries get_slot()
+        immediately before building the transaction.  If two events land in the
+        same slot, sub_index is incremented up to 255 before raising.
         """
         if len(telemetry_hash) > 64:
             raise ValueError(f"telemetry_hash exceeds 64 bytes: {len(telemetry_hash)}")
@@ -352,43 +373,71 @@ class AuxinProgramClient:
 
         agent_pda, _ = _find_agent_pda(self.program_id, owner_pubkey)
 
-        # Use a microsecond timestamp as a unique nonce for the PDA seed.
-        # The Rust handler accepts this field as `_slot: u64` (unused in the handler
-        # body) purely for PDA derivation, so any unique u64 is valid.  Using a
-        # timestamp avoids a get_slot() RPC round-trip and guarantees uniqueness
-        # across two anomalies that land in the same 400 ms Solana slot.
-        event_nonce = time.time_ns() // 1_000  # microseconds since epoch
-        log_pda, _ = _find_compliance_log_pda(self.program_id, agent_pda, event_nonce)
+        # Query the current slot so we can derive the correct PDA address.
+        # The on-chain Clock sysvar will reflect this slot when the tx executes
+        # (slots are ~400 ms; we submit immediately after querying).
+        slot_resp = await self.client.get_slot(commitment=Confirmed)
+        current_slot = slot_resp.value
 
-        data = (
-            _DISC["log_compliance_event"]
-            + _pack_string(telemetry_hash)
-            + _pack_u8(severity)
-            + _pack_u16(reason_code)
-            + struct.pack("<Q", event_nonce)  # u64 le — unique PDA seed
-        )
+        last_err: Exception | None = None
+        for sub_index in range(256):
+            log_pda, _ = _find_compliance_log_pda(
+                self.program_id, agent_pda, current_slot, sub_index
+            )
 
-        ix = Instruction(
-            program_id=self.program_id,
-            data=bytes(data),
-            accounts=[
-                AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=False),
-                AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True, is_writable=True),
-                AccountMeta(pubkey=log_pda, is_signer=False, is_writable=True),
-                AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
-            ],
-        )
+            data = (
+                _DISC["log_compliance_event"]
+                + _pack_string(telemetry_hash)
+                + _pack_u8(severity)
+                + _pack_u16(reason_code)
+                + _pack_u8(sub_index)  # u8 — disambiguates same-slot events
+            )
 
-        sig = await self._send(ix, [hw_wallet])
-        log.info(
-            "compliance.logged",
-            agent=str(agent_pda),
-            log_pda=str(log_pda),
-            severity=severity,
-            reason_code=hex(reason_code),
-            signature=sig,
-        )
-        return sig
+            ix = Instruction(
+                program_id=self.program_id,
+                data=bytes(data),
+                accounts=[
+                    AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=False),
+                    AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True, is_writable=True),
+                    # Clock sysvar — read by the program for slot-based PDA seed
+                    AccountMeta(
+                        pubkey=SYSVAR_CLOCK_PUBKEY, is_signer=False, is_writable=False
+                    ),
+                    AccountMeta(pubkey=log_pda, is_signer=False, is_writable=True),
+                    AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
+                ],
+            )
+
+            try:
+                sig = await self._send(ix, [hw_wallet])
+            except Exception as exc:
+                err_str = str(exc)
+                # If the PDA already exists (same slot, same sub_index), try next.
+                if "already in use" in err_str.lower() or "0x0" in err_str:
+                    last_err = exc
+                    log.debug(
+                        "compliance.slot_collision",
+                        slot=current_slot,
+                        sub_index=sub_index,
+                    )
+                    continue
+                raise
+
+            log.info(
+                "compliance.logged",
+                agent=str(agent_pda),
+                log_pda=str(log_pda),
+                slot=current_slot,
+                sub_index=sub_index,
+                severity=severity,
+                reason_code=hex(reason_code),
+                signature=sig,
+            )
+            return sig
+
+        raise RuntimeError(
+            f"log_compliance: exhausted 256 sub_index values at slot {current_slot}"
+        ) from last_err
 
     # ── update_provider_whitelist ─────────────────────────────────────────────
 

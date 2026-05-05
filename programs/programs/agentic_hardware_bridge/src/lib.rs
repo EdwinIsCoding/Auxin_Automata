@@ -38,16 +38,18 @@ pub mod agentic_hardware_bridge {
     }
 
     /// Records an immutable ComplianceLog PDA.
-    /// Signed by the hardware key. Never rate-limited or budget-blocked.
-    /// `slot` must equal the current slot — used as a PDA seed for uniqueness.
+    /// Signed by the hardware key. Never rate-limited or payment-budget-blocked.
+    /// Slot is derived from the on-chain Clock sysvar — not caller-supplied.
+    /// `sub_index` (0–255) disambiguates multiple events in the same slot;
+    /// the bridge SDK increments it on `AlreadyInUse` errors.
     pub fn log_compliance_event(
         ctx: Context<LogComplianceEvent>,
         hash: String,
         severity: u8,
         reason_code: u16,
-        slot: u64,
+        sub_index: u8,
     ) -> Result<()> {
-        instructions::log_compliance_event::handler(ctx, hash, severity, reason_code, slot)
+        instructions::log_compliance_event::handler(ctx, hash, severity, reason_code, sub_index)
     }
 
     /// Adds or removes a provider from the HardwareAgent whitelist.

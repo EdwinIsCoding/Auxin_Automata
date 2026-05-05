@@ -7,5 +7,12 @@
   "slot": 417657493,
   "deployed_at": "2026-05-05T02:21:30Z",
   "deploy_tx": "5wVJATiLnug7r2BaD5DpxqkcYwum644cjKK5aa8EKDhu6yyY5fzV8NW5QtrRKSmcy46UyqCQFDfZxZsGQ2DwfTkC",
-  "rent_sol": 1.54966488
+  "rent_sol": 1.54966488,
+  "upgrades": [
+    {
+      "upgraded_at": "2026-05-05T12:00:00Z",
+      "upgrade_tx": "2nv3qTfbGBZujeNrsC2u1tDfLbWbeUHcwd39p5panpzyX7JzWzXCRVY2ymsjhL6oPw85dnLRTwr9mRXgZ4x7Mr7n",
+      "reason": "Security fixes: slot-seed forgery (use clock sysvar), rate-limit epoch alignment, comment accuracy"
+    }
+  ]
 }

@@ -70,8 +70,9 @@
       "name": "log_compliance_event",
       "docs": [
         "Records an immutable ComplianceLog PDA.",
-        "Signed by the hardware key. Never rate-limited or budget-blocked.",
-        "`slot` must equal the current slot — used as a PDA seed for uniqueness."
+        "Signed by the hardware key. Never rate-limited or payment-budget-blocked.",
+        "Slot is derived from the on-chain Clock sysvar — not caller-supplied.",
+        "`sub_index` (0-255) disambiguates multiple events in the same slot."
       ],
       "discriminator": [
         35,
@@ -115,6 +116,10 @@
           "signer": true
         },
         {
+          "name": "clock",
+          "address": "SysvarC1ock11111111111111111111111111111111"
+        },
+        {
           "name": "log",
           "writable": true,
           "pda": {
@@ -132,8 +137,12 @@
                 "path": "agent"
               },
               {
+                "kind": "sysvar",
+                "path": "clock.slot"
+              },
+              {
                 "kind": "arg",
-                "path": "slot"
+                "path": "sub_index"
               }
             ]
           }
@@ -157,8 +166,8 @@
           "type": "u16"
         },
         {
-          "name": "slot",
-          "type": "u64"
+          "name": "sub_index",
+          "type": "u8"
         }
       ]
     },
@@ -539,7 +548,7 @@
       "docs": [
         "Immutable on-chain record of a compliance event.",
         "",
-        "Seeds: `[b\"log\", agent.key().as_ref(), &slot.to_le_bytes()]`"
+        "Seeds: `[b\"log\", agent.key().as_ref(), &clock.slot.to_le_bytes(), &[sub_index]]`"
       ],
       "type": {
         "kind": "struct",

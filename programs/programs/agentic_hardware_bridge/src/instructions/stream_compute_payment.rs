@@ -64,13 +64,17 @@ pub(crate) fn handler(ctx: Context<StreamComputePayment>, amount_lamports: u64) 
         AuxinError::ProviderNotWhitelisted
     );
 
-    // 2. Rolling-window rate limit
-    if clock
-        .slot
-        .saturating_sub(agent.last_window_start_slot)
-        >= RATE_LIMIT_WINDOW_SLOTS
-    {
-        agent.last_window_start_slot = clock.slot;
+    // 2. Epoch-aligned rate limit.
+    // Windows are fixed to slot boundaries 0–59, 60–119, … rather than
+    // resetting to clock.slot on each overflow.  Resetting to clock.slot
+    // (a "drifting" bucket) allowed a caller to place 99 payments at the
+    // last slot of one window and 100 more at the first slot of the next,
+    // yielding 199 payments inside any 60-slot sliding interval.
+    // Epoch alignment constrains the maximum to 100 per aligned window.
+    let current_epoch = clock.slot / RATE_LIMIT_WINDOW_SLOTS;
+    let stored_epoch = agent.last_window_start_slot / RATE_LIMIT_WINDOW_SLOTS;
+    if current_epoch > stored_epoch {
+        agent.last_window_start_slot = current_epoch * RATE_LIMIT_WINDOW_SLOTS;
         agent.window_tx_count = 0;
     }
     require!(
