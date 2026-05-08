@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { startMockDataFeed } from "@/lib/mockData";
+// startMockDataFeed removed — dashboard runs exclusively with the live bridge
 import { useBridgeSocket } from "@/lib/useBridgeSocket";
 import { useProgramEvents } from "@/lib/useProgramEvents";
 import { Header } from "@/components/Header";
@@ -154,13 +154,7 @@ export default function DashboardPage() {
   // Auto-detect recorded mode: frame_sync present in telemetry messages
   const isRecordedMode = useAuxinStore((s) => s.frameSync !== null);
 
-  // Mock feed runs immediately so the dashboard is never empty.
-  // When the bridge connects (Phase 3), real data overrides mock telemetry
-  // and real events are prepended to payments + compliance lists.
-  useEffect(() => {
-    const stop = startMockDataFeed();
-    return stop;
-  }, []);
+  // Mock feed removed — all data comes from the live bridge WebSocket.
 
   // Live bridge WebSocket — connects to ws://localhost:8766/ws, reconnects
   // automatically with exponential backoff. No-ops gracefully if bridge is offline.
