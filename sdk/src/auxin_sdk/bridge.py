@@ -917,7 +917,6 @@ class Bridge:
         log.info("risk_scoring_worker.started", interval_s=_RISK_INTERVAL_S)
         while True:
             try:
-                await asyncio.sleep(_RISK_INTERVAL_S)
                 balance_sol = await self._get_balance_sol()
                 report = calculate_risk_score(
                     payment_history=list(self._payment_log),
@@ -942,6 +941,7 @@ class Bridge:
                 break
             except Exception as exc:
                 log.error("risk_scoring_worker.error", error=str(exc))
+            await asyncio.sleep(_RISK_INTERVAL_S)
 
     async def _treasury_worker(self) -> None:
         """
@@ -953,7 +953,6 @@ class Bridge:
         log.info("treasury_worker.started", interval_s=_TREASURY_INTERVAL_S)
         while True:
             try:
-                await asyncio.sleep(_TREASURY_INTERVAL_S)
                 if self._treasury_agent is None:
                     continue
                 balance_sol = await self._get_balance_sol()
@@ -1028,6 +1027,7 @@ class Bridge:
                 break
             except Exception as exc:
                 log.error("treasury_worker.error", error=str(exc))
+            await asyncio.sleep(_TREASURY_INTERVAL_S)
 
     async def _invoice_worker(self) -> None:
         """
