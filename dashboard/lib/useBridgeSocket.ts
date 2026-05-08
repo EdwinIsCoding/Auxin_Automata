@@ -242,7 +242,7 @@ export function useBridgeSocket(): void {
         } else if (msg.type === "compliance_event") {
           // Skip replay session markers — they are on-chain for audit purposes
           // but are not real safety events and should not appear in the dashboard.
-          if (REPLAY_MARKER_CODES.has(msg.data.reason_code)) break;
+          if (REPLAY_MARKER_CODES.has(msg.data.reason_code)) return;
           s.addComplianceLog(adaptCompliance(msg.data));
           s.incrementComplianceEventCount();
         } else if (msg.type === "payment_event") {
