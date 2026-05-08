@@ -57,9 +57,10 @@ function ReplayBadge() {
   );
 }
 
-// Falls back to the deployed agent PDA placeholder if the env var isn't set.
+// Falls back to the deployed agent PDA placeholder if the env var isn't set or is empty.
+// Use || (not ??) so an empty-string value in .env.development also falls through.
 const AGENT_PUBKEY =
-  process.env.NEXT_PUBLIC_AGENT_PUBKEY ??
+  process.env.NEXT_PUBLIC_AGENT_PUBKEY ||
   "AuxiNdemo1111111111111111111111111111111111";
 
 const STATUS_CONFIG: Record<
@@ -145,6 +146,7 @@ export function Header() {
             backgroundColor: "rgba(168,85,247,0.08)",
             border: "1px solid rgba(168,85,247,0.25)",
           }}
+          suppressHydrationWarning
         >
           {truncated}
         </span>
