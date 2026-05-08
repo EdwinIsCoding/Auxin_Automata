@@ -45,6 +45,8 @@ export function VideoReplay() {
   const [videoError, setVideoError] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [oraclePulse, setOraclePulse] = useState<OraclePulse>(null);
+  // Incremented to force the <video> element to remount and retry after an error
+  const [retryKey, setRetryKey] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const prevPaymentCount = useRef(0);
@@ -88,6 +90,24 @@ export function VideoReplay() {
       }
     }
   }, [complianceEventCount, telemetry]);
+
+  // Auto-retry: when the video endpoint is unreachable (bridge not yet ready),
+  // poll every 3 s and force a remount of the <video> element once it responds.
+  useEffect(() => {
+    if (!videoError) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${BRIDGE_HTTP}/video/${activeCamera}`, { method: "HEAD" });
+        if (res.ok || res.status === 206) {
+          setVideoError(false);
+          setRetryKey((k) => k + 1);
+        }
+      } catch {
+        // bridge still not up — keep waiting
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [videoError, activeCamera]);
 
   const videoSrc = `${BRIDGE_HTTP}/video/${activeCamera}`;
 
@@ -178,7 +198,7 @@ export function VideoReplay() {
             can prevent onLoadedData from firing in some browsers. */}
         <video
           ref={videoRef}
-          key={videoSrc}
+          key={`${videoSrc}-${retryKey}`}
           src={videoSrc}
           className="w-full h-full object-cover"
           style={{

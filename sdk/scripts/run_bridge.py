@@ -329,6 +329,29 @@ async def main() -> None:
     # ── Source ────────────────────────────────────────────────────────────────
     source = _build_source(source_name)
 
+    # ── Video readiness gate (recorded mode only) ─────────────────────────────
+    # Do not start the bridge until all camera video files are confirmed present
+    # and decodable by the browser (H.264 in MP4).
+    if hasattr(source, "get_video_path"):
+        _CAMERAS = ["ee_zed_m_left", "ee_zed_m_right", "third_person_d405"]
+        _missing: list[str] = []
+        for _cam in _CAMERAS:
+            _vp = source.get_video_path(_cam)
+            if _vp is None:
+                _missing.append(_cam)
+            else:
+                _size_mb = round(_vp.stat().st_size / 1_000_000, 1)
+                log.info("bridge.video_ready", camera=_cam, path=str(_vp), size_mb=_size_mb)
+        if _missing:
+            raise RuntimeError(
+                f"Camera video files missing — cannot start bridge.\n"
+                f"Missing cameras: {_missing}\n"
+                f"Expected at: {source._episode_dir}/cameras/<key>/rgb.mp4\n"
+                "Run `ffmpeg -i <orig.mp4> -c:v libx264 -movflags +faststart <out.mp4>` "
+                "to produce a browser-compatible H.264 file."
+            )
+        log.info("bridge.all_videos_ready", cameras=_CAMERAS)
+
     # ── WebSocket broadcaster ─────────────────────────────────────────────────
     ws_broadcaster = WebsocketBroadcaster(port=ws_port)
 
