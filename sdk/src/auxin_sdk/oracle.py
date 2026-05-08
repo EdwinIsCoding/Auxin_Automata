@@ -56,8 +56,31 @@ _GEMINI_RESPONSE_SCHEMA = {
     "required": ["action_approved", "reason", "confidence", "prompt_version"],
 }
 
+_SCENE_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "objects": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "scene_summary": {"type": "string"},
+        "confidence": {"type": "number"},
+    },
+    "required": ["objects", "scene_summary", "confidence"],
+}
+
 
 # ── Public models ─────────────────────────────────────────────────────────────
+
+
+class SceneDescription(BaseModel):
+    """Scene description returned by SafetyOracle.describe_scene()."""
+
+    objects: list[str]
+    scene_summary: str
+    confidence: float
+    latency_ms: float
+    used_fallback: bool
 
 
 class OracleDecision(BaseModel):
@@ -131,6 +154,12 @@ class SafetyOracle:
         self._torque_threshold = torque_threshold
         resolved_prompt = prompt_file or _PROMPT_FILE
         self._prompt_text = resolved_prompt.read_text(encoding="utf-8")
+        _scene_prompt_file = Path(__file__).parent / "prompts" / "scene_description_v1.txt"
+        self._scene_prompt_text = (
+            _scene_prompt_file.read_text(encoding="utf-8")
+            if _scene_prompt_file.exists()
+            else ""
+        )
         self._genai_model: object | None = _model  # None → lazy-init on first check()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -200,6 +229,80 @@ class SafetyOracle:
             model=self._model_name,
         )
         return decision
+
+    async def describe_scene(
+        self, image_path: Path
+    ) -> "SceneDescription":
+        """
+        Ask Gemini what objects are visible in the workspace frame.
+
+        Returns a SceneDescription.  Never raises — falls back to an empty
+        description if the API is unavailable or the scene prompt is missing.
+        """
+        start = time.perf_counter()
+
+        client = self._get_or_create_client()
+
+        if client is None or not self._scene_prompt_text:
+            latency_ms = round((time.perf_counter() - start) * 1000, 2)
+            return SceneDescription(
+                objects=[],
+                scene_summary="Scene analysis unavailable (no API key or prompt).",
+                confidence=0.0,
+                latency_ms=latency_ms,
+                used_fallback=True,
+            )
+
+        used_fallback = False
+        try:
+            from google import genai
+            from google.genai import types
+
+            image_bytes = Path(image_path).read_bytes()
+
+            with anyio.move_on_after(self._timeout_s) as cancel_scope:
+                response = await client.aio.models.generate_content(  # type: ignore[union-attr]
+                    model=self._model_name,
+                    contents=[
+                        types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                    ],
+                    config=types.GenerateContentConfig(
+                        system_instruction=self._scene_prompt_text,
+                        response_mime_type="application/json",
+                        response_schema=_SCENE_RESPONSE_SCHEMA,
+                    ),
+                )
+
+            if cancel_scope.cancelled_caught:
+                raise TimeoutError("scene description timed out")
+
+            data: dict = json.loads(response.text)
+            latency_ms = round((time.perf_counter() - start) * 1000, 2)
+            log.info(
+                "oracle.scene_described",
+                objects=data.get("objects", []),
+                summary=data.get("scene_summary", ""),
+                latency_ms=latency_ms,
+            )
+            return SceneDescription(
+                objects=data.get("objects", []),
+                scene_summary=data.get("scene_summary", ""),
+                confidence=float(data.get("confidence", 0.5)),
+                latency_ms=latency_ms,
+                used_fallback=False,
+            )
+        except Exception as exc:
+            log.warning("oracle.scene_error", error=str(exc))
+            used_fallback = True
+
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        return SceneDescription(
+            objects=[],
+            scene_summary="Scene analysis unavailable.",
+            confidence=0.0,
+            latency_ms=latency_ms,
+            used_fallback=True,
+        )
 
     # ── Private helpers ───────────────────────────────────────────────────────
 

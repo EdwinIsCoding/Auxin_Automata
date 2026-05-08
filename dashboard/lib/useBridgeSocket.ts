@@ -19,7 +19,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAuxinStore } from "./store";
-import type { TelemetryFrame, JointData, PaymentEvent, ComplianceLog, RiskReport, TreasuryAnalysis, InvoiceMeta, ReplayFrameSync } from "./store";
+import type { TelemetryFrame, JointData, PaymentEvent, ComplianceLog, RiskReport, TreasuryAnalysis, InvoiceMeta, ReplayFrameSync, SceneDescriptionData } from "./store";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -91,7 +91,8 @@ type BridgeMessage =
   | { type: "risk_report";      data: RiskReport }
   | { type: "treasury_analysis"; data: TreasuryAnalysis }
   | { type: "invoice_ready";    data: BridgeInvoiceReady }
-  | { type: "bridge_adjustment"; data: Record<string, unknown> };
+  | { type: "bridge_adjustment"; data: Record<string, unknown> }
+  | { type: "scene_description"; data: SceneDescriptionData };
 
 // ── Rolling history buffer (persists between frames, cleared on remount) ──────
 
@@ -245,6 +246,8 @@ export function useBridgeSocket(): void {
           s.setRiskReport(msg.data);
         } else if (msg.type === "treasury_analysis") {
           s.setTreasuryAnalysis(msg.data);
+        } else if (msg.type === "scene_description") {
+          s.setSceneDescription(msg.data as SceneDescriptionData);
         } else if (msg.type === "invoice_ready") {
           s.setLatestInvoiceMeta({
             invoice_id: msg.data.invoice_id,

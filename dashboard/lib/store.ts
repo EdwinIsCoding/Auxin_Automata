@@ -96,6 +96,16 @@ export interface ReplayFrameSync {
   loop_count: number;
 }
 
+export interface SceneDescriptionData {
+  objects: string[];
+  scene_summary: string;
+  confidence: number;
+  latency_ms: number;
+  used_fallback: boolean;
+  frame_index: number | null;
+  timestamp: string;
+}
+
 export type WsStatus = "connecting" | "live" | "disconnected";
 
 interface AuxinStore {
@@ -136,6 +146,10 @@ interface AuxinStore {
   incrementGeminiCallCount: () => void;
   addPaidSol: (sol: number) => void;
   incrementComplianceEventCount: () => void;
+
+  // Scene description
+  sceneDescription: SceneDescriptionData | null;
+  setSceneDescription: (desc: SceneDescriptionData) => void;
 }
 
 export const useAuxinStore = create<AuxinStore>((set) => ({
@@ -156,6 +170,9 @@ export const useAuxinStore = create<AuxinStore>((set) => ({
   geminiCallCount: 0,
   totalPaidSol: 0,
   complianceEventCount: 0,
+
+  // Scene description initial state
+  sceneDescription: null,
 
   setTelemetry: (frame) => set({ telemetry: frame }),
 
@@ -184,4 +201,7 @@ export const useAuxinStore = create<AuxinStore>((set) => ({
   addPaidSol: (sol) => set((s) => ({ totalPaidSol: s.totalPaidSol + sol })),
   incrementComplianceEventCount: () =>
     set((s) => ({ complianceEventCount: s.complianceEventCount + 1 })),
+
+  // Scene description
+  setSceneDescription: (sceneDescription) => set({ sceneDescription }),
 }));

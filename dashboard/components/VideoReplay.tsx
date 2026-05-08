@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Video, Wifi, WifiOff, Camera, AlertTriangle } from "lucide-react";
 import { useAuxinStore } from "@/lib/store";
+import type { SceneDescriptionData } from "@/lib/store";
 
 // Bridge HTTP base URL (video endpoint lives on port 8767, same as /healthz)
 const BRIDGE_HTTP =
@@ -38,6 +39,7 @@ type OraclePulse = "approved" | "anomaly" | null;
 export function VideoReplay() {
   const frameSync = useAuxinStore((s) => s.frameSync);
   const telemetry = useAuxinStore((s) => s.telemetry);
+  const sceneDescription = useAuxinStore((s) => s.sceneDescription);
 
   const [activeCamera, setActiveCamera] = useState("ee_zed_m_left");
   const [videoError, setVideoError] = useState(false);
@@ -218,6 +220,36 @@ export function VideoReplay() {
                 </p>
               </>
             )}
+          </div>
+        )}
+
+        {/* Scene description overlay */}
+        {sceneDescription && sceneDescription.objects.length > 0 && (
+          <div
+            className="absolute bottom-8 left-0 right-0 px-3 py-2"
+            style={{
+              background: "linear-gradient(to top, rgba(7,11,20,0.92) 80%, transparent)",
+              pointerEvents: "none",
+            }}
+          >
+            <div className="flex flex-wrap gap-1 mb-1">
+              {sceneDescription.objects.map((obj, i) => (
+                <span
+                  key={i}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                  style={{
+                    backgroundColor: "rgba(168,85,247,0.18)",
+                    border: "1px solid rgba(168,85,247,0.35)",
+                    color: "#C084FC",
+                  }}
+                >
+                  {obj}
+                </span>
+              ))}
+            </div>
+            <p className="text-[10px] leading-tight" style={{ color: "#9ca3af" }}>
+              {sceneDescription.scene_summary}
+            </p>
           </div>
         )}
 

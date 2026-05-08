@@ -108,6 +108,9 @@ REASON_CODE_REPLAY_END = 0x03EA  # 1002 — replay session completed
 
 # Oracle is only called every N frames to limit Gemini API usage in high-fps replay
 ORACLE_INTERVAL_FRAMES = int(os.getenv("AUXIN_ORACLE_INTERVAL_FRAMES", "30"))
+
+# Scene description: every N frames Gemini describes visible objects (not the robot itself)
+SCENE_INTERVAL_FRAMES = int(os.getenv("AUXIN_SCENE_INTERVAL_FRAMES", "150"))
 MAX_BLOCKHASH_RETRIES = 3
 PRIORITY_FEE_FALLBACK_MICRO_LAMPORTS = 1_000
 COMPLIANCE_DRAIN_TIMEOUT_S = 30.0
@@ -436,6 +439,9 @@ class Bridge:
         self._payment_queue: asyncio.Queue[_PaymentTask] = asyncio.Queue(
             maxsize=PAYMENT_QUEUE_MAXSIZE
         )
+        self._scene_queue: asyncio.Queue[_PaymentTask] = asyncio.Queue(maxsize=2)
+        self._scene_frame_counter: int = 0
+        self._last_scene: dict[str, Any] | None = None
 
         # Health state
         self._start_time: float = time.monotonic()
@@ -512,6 +518,7 @@ class Bridge:
             asyncio.create_task(self._risk_scoring_worker(), name="risk-scoring-worker"),
             asyncio.create_task(self._treasury_worker(), name="treasury-worker"),
             asyncio.create_task(self._invoice_worker(), name="invoice-worker"),
+            asyncio.create_task(self._scene_worker(), name="scene-worker"),
         ]
 
         try:
@@ -636,6 +643,17 @@ class Bridge:
         _frame_idx = _sync.get("frame_index") if _sync else None
         await self._payment_queue.put(_PaymentTask(frame=frame, source_frame_idx=_frame_idx))
         _QUEUE_DEPTH.labels("payment").set(self._payment_queue.qsize())
+
+        # Scene description — every SCENE_INTERVAL_FRAMES, queue a frame for Gemini
+        # to describe what it sees (separate from the safety oracle).
+        self._scene_frame_counter += 1
+        if (
+            self._scene_frame_counter % SCENE_INTERVAL_FRAMES == 0
+            and not self._scene_queue.full()
+        ):
+            await self._scene_queue.put(
+                _PaymentTask(frame=frame, source_frame_idx=_frame_idx)
+            )
 
     # ── Workers ───────────────────────────────────────────────────────────────
 
@@ -829,6 +847,63 @@ class Bridge:
                     except Exception:
                         pass
                 self._payment_queue.task_done()
+
+    async def _scene_worker(self) -> None:
+        """
+        Drain the scene description queue.
+        Calls Gemini every SCENE_INTERVAL_FRAMES to describe visible workspace objects.
+        Broadcasts a 'scene_description' WebSocket message with the result.
+        """
+        log.info("scene_worker.started")
+        while True:
+            task: _PaymentTask = await self._scene_queue.get()
+            try:
+                image_path: Path
+                get_frame_at = getattr(self.source, "get_frame_at", None)
+                if get_frame_at is not None and task.source_frame_idx is not None:
+                    frame_arr = await asyncio.get_event_loop().run_in_executor(
+                        None, get_frame_at, task.source_frame_idx
+                    )
+                    if frame_arr is not None:
+                        import tempfile
+                        import cv2  # type: ignore[import-untyped]
+                        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                        tmp.close()
+                        _tmp = Path(tmp.name)
+                        cv2.imwrite(str(_tmp), cv2.cvtColor(frame_arr, cv2.COLOR_RGB2BGR))
+                        image_path = _tmp
+                    else:
+                        image_path, _ = sample_workspace_image()
+                        _tmp = None
+                else:
+                    image_path, _ = sample_workspace_image()
+                    _tmp = None
+
+                from .oracle import SceneDescription
+                desc: SceneDescription = await self.oracle.describe_scene(image_path)
+
+                if _tmp is not None:
+                    try:
+                        _tmp.unlink()
+                    except Exception:
+                        pass
+
+                self._last_scene = {
+                    "objects": desc.objects,
+                    "scene_summary": desc.scene_summary,
+                    "confidence": desc.confidence,
+                    "latency_ms": desc.latency_ms,
+                    "used_fallback": desc.used_fallback,
+                    "frame_index": task.source_frame_idx,
+                    "timestamp": task.frame.timestamp.isoformat(),
+                }
+                await self.ws_broadcaster.broadcast(
+                    {"type": "scene_description", "data": self._last_scene}
+                )
+            except Exception as exc:
+                log.warning("scene_worker.error", error=str(exc))
+            finally:
+                self._scene_queue.task_done()
 
     # ── Financial Intelligence Workers ────────────────────────────────────────
 
@@ -1149,6 +1224,7 @@ class Bridge:
                     ORACLE_INTERVAL_FRAMES * self._oracle_interval_multiplier
                 ),
                 "frame_sync": frame_sync,
+                "last_scene": self._last_scene,
             }
         )
 
