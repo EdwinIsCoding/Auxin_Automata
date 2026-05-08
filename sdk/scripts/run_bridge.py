@@ -117,6 +117,7 @@ def _build_source(source_name: str) -> TelemetrySource:
         playback_speed = float(os.environ.get("AUXIN_PLAYBACK_SPEED", "1.0"))
         camera_key = os.environ.get("AUXIN_CAMERA_KEY", "ee_zed_m_left")
         loop = os.environ.get("AUXIN_LOOP", "true").lower() not in ("0", "false", "no")
+        max_loops = int(os.environ.get("AUXIN_LOOP_MAX", "0"))  # 0 = unlimited
         log.info(
             "source.selected",
             kind="recorded",
@@ -124,12 +125,14 @@ def _build_source(source_name: str) -> TelemetrySource:
             playback_speed=playback_speed,
             camera_key=camera_key,
             loop=loop,
+            max_loops=max_loops if max_loops > 0 else "unlimited",
         )
         return RecordedSource(
             episode_dir=episode_dir,
             playback_speed=playback_speed,
             camera_key=camera_key,
             loop=loop,
+            max_loops=max_loops,
         )
 
     raise ValueError(

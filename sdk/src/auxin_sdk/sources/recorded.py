@@ -100,12 +100,14 @@ class RecordedSource(TelemetrySource):
         *,
         playback_speed: float = 1.0,
         loop: bool = True,
+        max_loops: int = 0,
         camera_key: str = "ee_zed_m_left",
         torque_threshold: float = _DEFAULT_TORQUE_THRESHOLD,
     ) -> None:
         self._episode_dir = Path(episode_dir)
         self._playback_speed = max(playback_speed, 0.01)
         self._loop = loop
+        self._max_loops = max_loops  # 0 = unlimited
         self._camera_key = camera_key
         self._torque_threshold = torque_threshold
 
@@ -221,6 +223,12 @@ class RecordedSource(TelemetrySource):
             )
 
             if not self._loop:
+                break
+            if self._max_loops > 0 and self._loop_count >= self._max_loops:
+                log.info(
+                    "recorded_source.max_loops_reached max=%d",
+                    self._max_loops,
+                )
                 break
 
     async def close(self) -> None:

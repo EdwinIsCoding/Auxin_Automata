@@ -156,7 +156,7 @@ export const useAuxinStore = create<AuxinStore>((set) => ({
   telemetry: null,
   payments: [],
   complianceLogs: [],
-  isLoading: true,
+  isLoading: false,
   error: null,
   wsStatus: "connecting",
 
