@@ -484,6 +484,12 @@ class Bridge:
         # Frame counter for oracle interval throttling
         self._oracle_frame_counter: int = 0
 
+        # Event fired when enough real data has arrived to make scoring meaningful.
+        # Triggered by whichever comes first: 5 confirmed payments or 2 compliance events.
+        self._scoring_ready = asyncio.Event()
+        self._SCORING_MIN_PAYMENTS = 5
+        self._SCORING_MIN_COMPLIANCE = 2
+
     # ── Public ────────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
@@ -689,6 +695,9 @@ class Bridge:
                 if sig:
                     _TX_TOTAL.labels(kind="compliance", status="ok").inc()
                     self._compliance_total += 1
+                    if (not self._scoring_ready.is_set()
+                            and self._compliance_total >= self._SCORING_MIN_COMPLIANCE):
+                        self._scoring_ready.set()
                     self._last_successful_tx = {
                         "signature": sig,
                         "kind": "compliance",
@@ -784,6 +793,9 @@ class Bridge:
                         if result.tx_signature:
                             _TX_TOTAL.labels(kind="payment", status="ok").inc()
                             self._payments_total += 1
+                            if (not self._scoring_ready.is_set()
+                                    and self._payments_total >= self._SCORING_MIN_PAYMENTS):
+                                self._scoring_ready.set()
                             effective_lamports = int(
                                 PAYMENT_AMOUNT_LAMPORTS * self._payment_lamport_multiplier
                             )
@@ -915,6 +927,9 @@ class Bridge:
         Broadcasts RiskReport via WebSocket. Never blocks the main telemetry loop.
         """
         log.info("risk_scoring_worker.started", interval_s=_RISK_INTERVAL_S)
+        await self._scoring_ready.wait()
+        log.info("risk_scoring_worker.first_run_triggered",
+                 payments=self._payments_total, compliance=self._compliance_total)
         while True:
             try:
                 balance_sol = await self._get_balance_sol()
@@ -951,6 +966,9 @@ class Bridge:
         The treasury agent NEVER signs transactions or transfers funds.
         """
         log.info("treasury_worker.started", interval_s=_TREASURY_INTERVAL_S)
+        await self._scoring_ready.wait()
+        log.info("treasury_worker.first_run_triggered",
+                 payments=self._payments_total, compliance=self._compliance_total)
         while True:
             try:
                 if self._treasury_agent is None:
