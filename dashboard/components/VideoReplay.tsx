@@ -29,10 +29,9 @@ const BRIDGE_HTTP =
 const CAMERA_LABELS: Record<string, string> = {
   ee_zed_m_left: "EE ZED Left",
   ee_zed_m_right: "EE ZED Right",
-  third_person_d405: "3rd Person",
 };
 
-const AVAILABLE_CAMERAS = ["ee_zed_m_left", "ee_zed_m_right", "third_person_d405"];
+const AVAILABLE_CAMERAS = ["ee_zed_m_left", "ee_zed_m_right"];
 
 type OraclePulse = "approved" | "anomaly" | null;
 

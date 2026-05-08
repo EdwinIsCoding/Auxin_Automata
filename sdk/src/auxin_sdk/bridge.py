@@ -586,6 +586,19 @@ class Bridge:
             telemetry_payload["frame_sync"] = frame_sync
         await self.ws_broadcaster.broadcast(telemetry_payload)
 
+        # Scene description — counted on every frame so the interval is wall-clock
+        # accurate regardless of oracle throttling or anomaly branching below.
+        self._scene_frame_counter += 1
+        if (
+            self._scene_frame_counter % SCENE_INTERVAL_FRAMES == 0
+            and not self._scene_queue.full()
+        ):
+            _scene_sync = getattr(self.source, "get_frame_sync_info", lambda: None)()
+            _scene_frame_idx = _scene_sync.get("frame_index") if _scene_sync else None
+            await self._scene_queue.put(
+                _PaymentTask(frame=frame, source_frame_idx=_scene_frame_idx)
+            )
+
         # (b) Anomaly path — unconditional compliance.
         # Session sentinel flags get severity=0 (informational) with specific reason codes.
         if frame.anomaly_flags:
@@ -643,17 +656,6 @@ class Bridge:
         _frame_idx = _sync.get("frame_index") if _sync else None
         await self._payment_queue.put(_PaymentTask(frame=frame, source_frame_idx=_frame_idx))
         _QUEUE_DEPTH.labels("payment").set(self._payment_queue.qsize())
-
-        # Scene description — every SCENE_INTERVAL_FRAMES, queue a frame for Gemini
-        # to describe what it sees (separate from the safety oracle).
-        self._scene_frame_counter += 1
-        if (
-            self._scene_frame_counter % SCENE_INTERVAL_FRAMES == 0
-            and not self._scene_queue.full()
-        ):
-            await self._scene_queue.put(
-                _PaymentTask(frame=frame, source_frame_idx=_frame_idx)
-            )
 
     # ── Workers ───────────────────────────────────────────────────────────────
 

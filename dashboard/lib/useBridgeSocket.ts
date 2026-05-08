@@ -37,6 +37,10 @@ const REASON_CODE_LABELS: Record<number, string> = {
   0x0002: "ORACLE_DENIED",
 };
 
+// Replay session markers — logged on-chain for audit but hidden from the dashboard.
+// These are informational bookkeeping events, not real safety events.
+const REPLAY_MARKER_CODES = new Set([0x03e9, 0x03ea]);
+
 // ── Python schema types (what the bridge actually sends) ──────────────────────
 
 interface PythonTelemetryFrame {
@@ -236,6 +240,9 @@ export function useBridgeSocket(): void {
             }
           }
         } else if (msg.type === "compliance_event") {
+          // Skip replay session markers — they are on-chain for audit purposes
+          // but are not real safety events and should not appear in the dashboard.
+          if (REPLAY_MARKER_CODES.has(msg.data.reason_code)) break;
           s.addComplianceLog(adaptCompliance(msg.data));
           s.incrementComplianceEventCount();
         } else if (msg.type === "payment_event") {
