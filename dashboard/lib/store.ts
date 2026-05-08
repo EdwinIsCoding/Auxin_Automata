@@ -88,6 +88,14 @@ export interface InvoiceMeta {
   pdf_path: string;
 }
 
+export interface ReplayFrameSync {
+  frame_index: number;
+  total_frames: number;
+  episode_progress: number; // 0.0–1.0
+  camera_key: string;
+  loop_count: number;
+}
+
 export type WsStatus = "connecting" | "live" | "disconnected";
 
 interface AuxinStore {
@@ -104,6 +112,13 @@ interface AuxinStore {
   treasuryAnalysis: TreasuryAnalysis | null;
   latestInvoiceMeta: InvoiceMeta | null;
 
+  // Recorded replay state — null when not in recorded mode
+  frameSync: ReplayFrameSync | null;
+  /** Running totals for the header counter display */
+  geminiCallCount: number;
+  totalPaidSol: number;
+  complianceEventCount: number;
+
   setTelemetry: (frame: TelemetryFrame) => void;
   addPayment: (payment: PaymentEvent) => void;
   addComplianceLog: (log: ComplianceLog) => void;
@@ -115,6 +130,12 @@ interface AuxinStore {
   setRiskReport: (report: RiskReport) => void;
   setTreasuryAnalysis: (analysis: TreasuryAnalysis) => void;
   setLatestInvoiceMeta: (meta: InvoiceMeta) => void;
+
+  // Replay setters
+  setFrameSync: (sync: ReplayFrameSync | null) => void;
+  incrementGeminiCallCount: () => void;
+  addPaidSol: (sol: number) => void;
+  incrementComplianceEventCount: () => void;
 }
 
 export const useAuxinStore = create<AuxinStore>((set) => ({
@@ -129,6 +150,12 @@ export const useAuxinStore = create<AuxinStore>((set) => ({
   riskReport: null,
   treasuryAnalysis: null,
   latestInvoiceMeta: null,
+
+  // Replay initial state
+  frameSync: null,
+  geminiCallCount: 0,
+  totalPaidSol: 0,
+  complianceEventCount: 0,
 
   setTelemetry: (frame) => set({ telemetry: frame }),
 
@@ -150,4 +177,11 @@ export const useAuxinStore = create<AuxinStore>((set) => ({
   setRiskReport: (riskReport) => set({ riskReport }),
   setTreasuryAnalysis: (treasuryAnalysis) => set({ treasuryAnalysis }),
   setLatestInvoiceMeta: (latestInvoiceMeta) => set({ latestInvoiceMeta }),
+
+  // Replay
+  setFrameSync: (frameSync) => set({ frameSync }),
+  incrementGeminiCallCount: () => set((s) => ({ geminiCallCount: s.geminiCallCount + 1 })),
+  addPaidSol: (sol) => set((s) => ({ totalPaidSol: s.totalPaidSol + sol })),
+  incrementComplianceEventCount: () =>
+    set((s) => ({ complianceEventCount: s.complianceEventCount + 1 })),
 }));

@@ -376,67 +376,89 @@ class AuxinProgramClient:
         # Query the current slot so we can derive the correct PDA address.
         # The on-chain Clock sysvar will reflect this slot when the tx executes
         # (slots are ~400 ms; we submit immediately after querying).
-        slot_resp = await self.client.get_slot(commitment=Confirmed)
+        slot_resp = await self._rpc.get_slot(commitment=Confirmed)
         current_slot = slot_resp.value
 
         last_err: Exception | None = None
-        for sub_index in range(256):
-            log_pda, _ = _find_compliance_log_pda(
-                self.program_id, agent_pda, current_slot, sub_index
-            )
+        # Outer loop: refresh slot if ConstraintSeeds (slot advanced during submit).
+        # Up to 3 slot re-fetches to guard against sustained load.
+        for _slot_retry in range(3):
+            for sub_index in range(256):
+                log_pda, _ = _find_compliance_log_pda(
+                    self.program_id, agent_pda, current_slot, sub_index
+                )
 
-            data = (
-                _DISC["log_compliance_event"]
-                + _pack_string(telemetry_hash)
-                + _pack_u8(severity)
-                + _pack_u16(reason_code)
-                + _pack_u8(sub_index)  # u8 — disambiguates same-slot events
-            )
+                data = (
+                    _DISC["log_compliance_event"]
+                    + _pack_string(telemetry_hash)
+                    + _pack_u8(severity)
+                    + _pack_u16(reason_code)
+                    + _pack_u8(sub_index)  # u8 — disambiguates same-slot events
+                )
 
-            ix = Instruction(
-                program_id=self.program_id,
-                data=bytes(data),
-                accounts=[
-                    AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=False),
-                    AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True, is_writable=True),
-                    # Clock sysvar — read by the program for slot-based PDA seed
-                    AccountMeta(
-                        pubkey=SYSVAR_CLOCK_PUBKEY, is_signer=False, is_writable=False
-                    ),
-                    AccountMeta(pubkey=log_pda, is_signer=False, is_writable=True),
-                    AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
-                ],
-            )
+                ix = Instruction(
+                    program_id=self.program_id,
+                    data=bytes(data),
+                    accounts=[
+                        AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=False),
+                        AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True, is_writable=True),
+                        # Clock sysvar — read by the program for slot-based PDA seed
+                        AccountMeta(
+                            pubkey=SYSVAR_CLOCK_PUBKEY, is_signer=False, is_writable=False
+                        ),
+                        AccountMeta(pubkey=log_pda, is_signer=False, is_writable=True),
+                        AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
+                    ],
+                )
 
-            try:
-                sig = await self._send(ix, [hw_wallet])
-            except Exception as exc:
-                err_str = str(exc)
-                # If the PDA already exists (same slot, same sub_index), try next.
-                if "already in use" in err_str.lower() or "0x0" in err_str:
-                    last_err = exc
-                    log.debug(
-                        "compliance.slot_collision",
+                try:
+                    sig = await self._send(ix, [hw_wallet])
+                except Exception as exc:
+                    err_str = str(exc)
+                    # PDA already exists (same slot, same sub_index) → try next sub_index.
+                    if "already in use" in err_str.lower() or "0x0" in err_str:
+                        last_err = exc
+                        log.debug(
+                            "compliance.slot_collision",
+                            slot=current_slot,
+                            sub_index=sub_index,
+                        )
+                        continue
+                    # ConstraintSeeds (0x7d6 / error 2006): slot advanced between
+                    # get_slot() and execution.  Re-fetch slot and retry from sub_index 0.
+                    if "0x7d6" in err_str or "ConstraintSeeds" in err_str:
+                        last_err = exc
+                        log.warning(
+                            "compliance.slot_advanced",
+                            old_slot=current_slot,
+                            sub_index=sub_index,
+                        )
+                        slot_resp = await self._rpc.get_slot(commitment=Confirmed)
+                        current_slot = slot_resp.value
+                        break  # break inner loop → retry with new slot
+                    raise
+
+                else:
+                    log.info(
+                        "compliance.logged",
+                        agent=str(agent_pda),
+                        log_pda=str(log_pda),
                         slot=current_slot,
                         sub_index=sub_index,
+                        severity=severity,
+                        reason_code=hex(reason_code),
+                        signature=sig,
                     )
-                    continue
-                raise
-
-            log.info(
-                "compliance.logged",
-                agent=str(agent_pda),
-                log_pda=str(log_pda),
-                slot=current_slot,
-                sub_index=sub_index,
-                severity=severity,
-                reason_code=hex(reason_code),
-                signature=sig,
-            )
-            return sig
+                    return sig
+            else:
+                # Inner loop exhausted 256 sub_index values — raise.
+                raise RuntimeError(
+                    f"log_compliance: exhausted 256 sub_index values at slot {current_slot}"
+                ) from last_err
+            # Outer loop continues with new slot.
 
         raise RuntimeError(
-            f"log_compliance: exhausted 256 sub_index values at slot {current_slot}"
+            f"log_compliance: slot keeps advancing after 3 re-fetches (last slot {current_slot})"
         ) from last_err
 
     # ── update_provider_whitelist ─────────────────────────────────────────────

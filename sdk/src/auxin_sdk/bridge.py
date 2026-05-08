@@ -97,11 +97,17 @@ _QUEUE_DEPTH = Gauge(
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 PAYMENT_QUEUE_MAXSIZE = 50
-PAYMENT_AMOUNT_LAMPORTS = 5_000  # 0.000005 SOL per oracle-approved action
+PAYMENT_AMOUNT_LAMPORTS = int(os.getenv("AUXIN_PAYMENT_LAMPORTS", "5000"))  # lamports per oracle-approved action
 COMPLIANCE_SEVERITY_ANOMALY = 2  # direct anomaly-flag path
 COMPLIANCE_SEVERITY_ORACLE_DENIED = 1  # oracle denial path
+COMPLIANCE_SEVERITY_INFO = 0  # informational (session markers)
 REASON_CODE_ANOMALY = 0x0001
 REASON_CODE_ORACLE_DENIED = 0x0002
+REASON_CODE_REPLAY_START = 0x03E9  # 1001 — replay session started
+REASON_CODE_REPLAY_END = 0x03EA  # 1002 — replay session completed
+
+# Oracle is only called every N frames to limit Gemini API usage in high-fps replay
+ORACLE_INTERVAL_FRAMES = int(os.getenv("AUXIN_ORACLE_INTERVAL_FRAMES", "30"))
 MAX_BLOCKHASH_RETRIES = 3
 PRIORITY_FEE_FALLBACK_MICRO_LAMPORTS = 1_000
 COMPLIANCE_DRAIN_TIMEOUT_S = 30.0
@@ -131,6 +137,9 @@ class _ComplianceTask:
 class _PaymentTask:
     frame: TelemetryFrame
     idempotency_key: str = field(default_factory=lambda: uuid.uuid4().hex)
+    # Frame index in the source — used to extract the real video frame for oracle.
+    # None when the source doesn't provide frame indexing (mock/twin/ros2).
+    source_frame_idx: int | None = None
 
 
 # ── WebsocketBroadcaster ──────────────────────────────────────────────────────
@@ -466,6 +475,9 @@ class Bridge:
         # Per-payment lamport multiplier (1.0 = normal, <1.0 = reduced)
         self._payment_lamport_multiplier: float = 1.0
 
+        # Frame counter for oracle interval throttling
+        self._oracle_frame_counter: int = 0
+
     # ── Public ────────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
@@ -548,41 +560,67 @@ class Bridge:
         """
         Classify one telemetry frame and route it to the appropriate queue.
 
-        (a) Always broadcast raw telemetry to the dashboard.
+        (a) Always broadcast raw telemetry + optional frame_sync to the dashboard.
         (b) Anomaly frames → compliance queue (UNBOUNDED, never dropped).
-        (c) Normal frames  → payment queue (cap=50).  Drop when full.
+            Session sentinel flags (replay_session_start/end) get info severity (0).
+        (c) Normal frames → payment queue (cap=50), but only every
+            ORACLE_INTERVAL_FRAMES frames to limit Gemini API usage.
         """
         bind_request_id()
         self._frames_processed += 1
 
-        # (a) Raw telemetry → dashboard
-        await self.ws_broadcaster.broadcast(
-            {
-                "type": "telemetry",
-                "data": frame.model_dump(mode="json"),
-            }
-        )
+        # (a) Raw telemetry → dashboard, with optional frame_sync from source
+        telemetry_payload: dict[str, Any] = {
+            "type": "telemetry",
+            "data": frame.model_dump(mode="json"),
+        }
+        frame_sync = getattr(self.source, "get_frame_sync_info", lambda: None)()
+        if frame_sync is not None:
+            telemetry_payload["frame_sync"] = frame_sync
+        await self.ws_broadcaster.broadcast(telemetry_payload)
 
-        # (b) Anomaly path — unconditional compliance
+        # (b) Anomaly path — unconditional compliance.
+        # Session sentinel flags get severity=0 (informational) with specific reason codes.
         if frame.anomaly_flags:
             _ANOMALIES_TOTAL.inc()
+
+            if "replay_session_start" in frame.anomaly_flags:
+                severity = COMPLIANCE_SEVERITY_INFO
+                reason_code = REASON_CODE_REPLAY_START
+            elif "replay_session_end" in frame.anomaly_flags:
+                severity = COMPLIANCE_SEVERITY_INFO
+                reason_code = REASON_CODE_REPLAY_END
+            else:
+                severity = COMPLIANCE_SEVERITY_ANOMALY
+                reason_code = REASON_CODE_ANOMALY
+
             task = _ComplianceTask(
                 frame=frame,
                 telemetry_hash=sha256_hex(frame),
-                severity=COMPLIANCE_SEVERITY_ANOMALY,
-                reason_code=REASON_CODE_ANOMALY,
+                severity=severity,
+                reason_code=reason_code,
             )
             await self._compliance_queue.put(task)
             _QUEUE_DEPTH.labels("compliance").set(self._compliance_queue.qsize())
             log.info(
                 "bridge.anomaly_enqueued",
                 flags=frame.anomaly_flags,
+                severity=severity,
+                reason_code=hex(reason_code),
                 hash_prefix=task.telemetry_hash[:16],
                 compliance_depth=self._compliance_queue.qsize(),
             )
             return
 
-        # (c) Normal path — payment (subject to backpressure)
+        # (c) Normal path — payment, throttled by oracle interval.
+        # Every Nth frame gets queued for oracle check; the rest are counted but skipped.
+        effective_interval = max(
+            1, int(ORACLE_INTERVAL_FRAMES * self._oracle_interval_multiplier)
+        )
+        self._oracle_frame_counter += 1
+        if self._oracle_frame_counter % effective_interval != 0:
+            return  # Skip oracle check for this frame — telemetry was already broadcast
+
         if self._payment_queue.full():
             self._frames_dropped += 1
             log.warning(
@@ -593,7 +631,10 @@ class Bridge:
             )
             return
 
-        await self._payment_queue.put(_PaymentTask(frame=frame))
+        # Capture current source frame index for video-backed oracle calls
+        _sync = getattr(self.source, "get_frame_sync_info", lambda: None)()
+        _frame_idx = _sync.get("frame_index") if _sync else None
+        await self._payment_queue.put(_PaymentTask(frame=frame, source_frame_idx=_frame_idx))
         _QUEUE_DEPTH.labels("payment").set(self._payment_queue.qsize())
 
     # ── Workers ───────────────────────────────────────────────────────────────
@@ -672,8 +713,34 @@ class Bridge:
         while True:
             task: _PaymentTask = await self._payment_queue.get()
             _QUEUE_DEPTH.labels("payment").set(self._payment_queue.qsize())
+            _tmp_image_path: Path | None = None
             try:
-                image_path, _ = sample_workspace_image()
+                # Use the real video frame when the source provides one (recorded mode).
+                # Falls back to the fixture image so mock/twin/ros2 are unaffected.
+                image_path: Path
+                get_frame_at = getattr(self.source, "get_frame_at", None)
+                if get_frame_at is not None and task.source_frame_idx is not None:
+                    frame_arr = await asyncio.get_event_loop().run_in_executor(
+                        None, get_frame_at, task.source_frame_idx
+                    )
+                    if frame_arr is not None:
+                        import tempfile
+                        import cv2  # type: ignore[import-untyped]
+                        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                        tmp.close()
+                        _tmp_image_path = Path(tmp.name)
+                        cv2.imwrite(str(_tmp_image_path), cv2.cvtColor(frame_arr, cv2.COLOR_RGB2BGR))
+                        image_path = _tmp_image_path
+                        log.debug(
+                            "payment_worker.real_frame",
+                            frame_idx=task.source_frame_idx,
+                            path=str(image_path),
+                        )
+                    else:
+                        image_path, _ = sample_workspace_image()
+                else:
+                    image_path, _ = sample_workspace_image()
+
                 decision: OracleDecision = await self.oracle.check(task.frame, image_path)
                 self._last_oracle_latency_ms = decision.latency_ms
                 _ORACLE_LATENCY.observe(decision.latency_ms / 1_000)
@@ -755,6 +822,12 @@ class Bridge:
                 _TX_TOTAL.labels(kind="payment", status="error").inc()
                 log.error("payment_worker.error", error=str(exc))
             finally:
+                # Clean up temp frame file (only created for real video frames)
+                if _tmp_image_path is not None:
+                    try:
+                        _tmp_image_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
                 self._payment_queue.task_done()
 
     # ── Financial Intelligence Workers ────────────────────────────────────────
@@ -946,6 +1019,8 @@ class Bridge:
         app = aiohttp.web.Application()
         app.router.add_get("/healthz", self._healthz_handler)
         app.router.add_get("/invoice/latest", self._invoice_latest_handler)
+        app.router.add_get("/video/{camera_key}", self._video_handler)
+        app.router.add_route("OPTIONS", "/video/{camera_key}", self._video_handler)
         self._health_runner = aiohttp.web.AppRunner(app)
         await self._health_runner.setup()
         self._health_site = aiohttp.web.TCPSite(self._health_runner, host, self._healthz_port)
@@ -971,13 +1046,93 @@ class Bridge:
             },
         )
 
+    async def _video_handler(  # pragma: no cover
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """GET /video/{camera_key} — serve the MP4 from the episode directory.
+
+        Only available when the source exposes get_video_path(); otherwise 404.
+        CORS headers are enabled so the Next.js dashboard can fetch cross-origin.
+        """
+        camera_key = request.match_info.get("camera_key", "")
+        get_video_path = getattr(self.source, "get_video_path", None)
+        if get_video_path is None:
+            return aiohttp.web.Response(
+                status=404,
+                text="Video endpoint not available for this source",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        video_path = get_video_path(camera_key or None)
+        if video_path is None or not video_path.exists():
+            return aiohttp.web.Response(
+                status=404,
+                text=f"Video not found for camera_key={camera_key!r}",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        # Add an OPTIONS handler for CORS preflight
+        if request.method == "OPTIONS":
+            return aiohttp.web.Response(
+                status=204,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Range",
+                },
+            )
+
+        file_size = video_path.stat().st_size
+        range_header = request.headers.get("Range")
+
+        cors_headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Range",
+            "Accept-Ranges": "bytes",
+            "Content-Type": "video/mp4",
+            "Cache-Control": "no-store",
+        }
+
+        if range_header:
+            # Parse Range: bytes=start-end
+            try:
+                range_val = range_header.strip().replace("bytes=", "")
+                parts = range_val.split("-")
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if parts[1] else file_size - 1
+                end = min(end, file_size - 1)
+                length = end - start + 1
+
+                with video_path.open("rb") as fh:
+                    fh.seek(start)
+                    data = fh.read(length)
+
+                return aiohttp.web.Response(
+                    status=206,
+                    body=data,
+                    headers={
+                        **cors_headers,
+                        "Content-Range": f"bytes {start}-{end}/{file_size}",
+                        "Content-Length": str(length),
+                    },
+                )
+            except Exception:
+                pass  # Fall through to full response
+
+        # Full file response
+        return aiohttp.web.FileResponse(
+            video_path,
+            headers=cors_headers,
+        )
+
     async def _healthz_handler(  # pragma: no cover
         self, request: aiohttp.web.Request
     ) -> aiohttp.web.Response:
+        frame_sync = getattr(self.source, "get_frame_sync_info", lambda: None)()
         return aiohttp.web.json_response(
             {
                 "status": "ok",
                 "source_status": self._source_status,
+                "source_kind": type(self.source).__name__,
                 "last_successful_tx": self._last_successful_tx,
                 "last_oracle_latency_ms": self._last_oracle_latency_ms,
                 "queue_depths": {
@@ -990,6 +1145,10 @@ class Bridge:
                 "compliance_total": self._compliance_total,
                 "payments_total": self._payments_total,
                 "ws_clients": self.ws_broadcaster.client_count,
+                "oracle_interval_frames": int(
+                    ORACLE_INTERVAL_FRAMES * self._oracle_interval_multiplier
+                ),
+                "frame_sync": frame_sync,
             }
         )
 

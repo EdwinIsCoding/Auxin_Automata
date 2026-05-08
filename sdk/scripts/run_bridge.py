@@ -3,7 +3,7 @@
 
 Environment variables
 ─────────────────────
-AUXIN_SOURCE          mock | twin | ros2  (default: mock)
+AUXIN_SOURCE          mock | twin | ros2 | recorded  (default: mock)
 AUXIN_PRIVACY         direct | cloak | magicblock | umbra  (default: direct)
                         direct     — public SOL transfer via the Auxin Anchor program
                         cloak      — private payment via cloak.ag ZK shield pool
@@ -27,6 +27,12 @@ BRIDGE_WS_PORT        WebSocket broadcaster port   (default: 8766)
 BRIDGE_HEALTHZ_PORT   Health endpoint port         (default: 8767)
 AUXIN_MOCK_RATE_HZ    Frames/sec for MockSource    (default: 10)
 AUXIN_MOCK_ANOMALY_EVERY  Anomaly injection period (default: 12)
+AUXIN_EPISODE_DIR     Path to a LeRobot episode directory (required for AUXIN_SOURCE=recorded)
+AUXIN_PLAYBACK_SPEED  Playback speed multiplier for recorded mode (default: 1.0)
+AUXIN_CAMERA_KEY      Camera to use for oracle frames in recorded mode (default: ee_zed_m_left)
+AUXIN_LOOP            Loop replay when episode ends (default: true)
+AUXIN_ORACLE_INTERVAL_FRAMES  Oracle check every N frames (default: 30)
+AUXIN_PAYMENT_LAMPORTS        Lamports per oracle-approved payment (default: 5000)
 """
 
 from __future__ import annotations
@@ -99,7 +105,36 @@ def _build_source(source_name: str) -> TelemetrySource:
         log.info("source.selected", kind="ros2")
         return ROS2Source()
 
-    raise ValueError(f"Unknown AUXIN_SOURCE={source_name!r}. Valid values: mock, twin, ros2")
+    if name == "recorded":
+        from auxin_sdk.sources.recorded import RecordedSource
+
+        episode_dir = os.environ.get("AUXIN_EPISODE_DIR", "")
+        if not episode_dir:
+            raise ValueError(
+                "AUXIN_SOURCE=recorded requires AUXIN_EPISODE_DIR to be set "
+                "(path to a LeRobot episode directory containing robot.jsonl)"
+            )
+        playback_speed = float(os.environ.get("AUXIN_PLAYBACK_SPEED", "1.0"))
+        camera_key = os.environ.get("AUXIN_CAMERA_KEY", "ee_zed_m_left")
+        loop = os.environ.get("AUXIN_LOOP", "true").lower() not in ("0", "false", "no")
+        log.info(
+            "source.selected",
+            kind="recorded",
+            episode_dir=episode_dir,
+            playback_speed=playback_speed,
+            camera_key=camera_key,
+            loop=loop,
+        )
+        return RecordedSource(
+            episode_dir=episode_dir,
+            playback_speed=playback_speed,
+            camera_key=camera_key,
+            loop=loop,
+        )
+
+    raise ValueError(
+        f"Unknown AUXIN_SOURCE={source_name!r}. Valid values: mock, twin, ros2, recorded"
+    )
 
 
 # ── Privacy provider factory — the ONLY place AUXIN_PRIVACY is read ──────────
@@ -283,7 +318,13 @@ async def main() -> None:
     provider_pubkey = Pubkey.from_string(provider_str) if provider_str else None
 
     # ── Oracle ────────────────────────────────────────────────────────────────
-    oracle = SafetyOracle(api_key=os.environ.get("GEMINI_API_KEY"))
+    _prompts_dir = _SDK_ROOT / "src" / "auxin_sdk" / "prompts"
+    _replay_prompt = _prompts_dir / "replay_oracle_v1.txt"
+    _oracle_prompt = _replay_prompt if source_name == "recorded" and _replay_prompt.exists() else None
+    oracle = SafetyOracle(
+        api_key=os.environ.get("GEMINI_API_KEY"),
+        prompt_file=_oracle_prompt,
+    )
 
     # ── Source ────────────────────────────────────────────────────────────────
     source = _build_source(source_name)

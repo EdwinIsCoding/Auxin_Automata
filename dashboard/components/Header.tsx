@@ -7,6 +7,56 @@ import { useAuxinStore } from "@/lib/store";
 import type { WsStatus } from "@/lib/store";
 import { ACTIVE_CLUSTER, clusterLabel, clusterColor } from "@/lib/cluster";
 
+/** Blue pulsing badge shown only in recorded replay mode. */
+function ReplayBadge() {
+  const frameSync = useAuxinStore((s) => s.frameSync);
+  const geminiCallCount = useAuxinStore((s) => s.geminiCallCount);
+  const totalPaidSol = useAuxinStore((s) => s.totalPaidSol);
+  const complianceEventCount = useAuxinStore((s) => s.complianceEventCount);
+
+  if (!frameSync) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-[0.18em] uppercase"
+        style={{
+          color: "#60a5fa",
+          backgroundColor: "rgba(96,165,250,0.10)",
+          border: "1px solid rgba(96,165,250,0.30)",
+        }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{
+            backgroundColor: "#60a5fa",
+            boxShadow: "0 0 6px #60a5fa",
+            animation: "ripple-ring 2s ease-out infinite",
+          }}
+        />
+        Recorded Replay
+      </span>
+      {/* Live session stats */}
+      <span
+        className="hidden lg:flex items-center gap-2 text-[9px] font-mono tracking-wider"
+        style={{ color: "#4b5563" }}
+      >
+        <span style={{ color: "#A855F7" }}>
+          Gemini: {geminiCallCount}
+        </span>
+        <span>|</span>
+        <span style={{ color: "#14F195" }}>
+          Paid: {totalPaidSol.toFixed(6)} SOL
+        </span>
+        <span>|</span>
+        <span style={{ color: "#f59e0b" }}>
+          Compliance: {complianceEventCount}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 // Falls back to the deployed agent PDA placeholder if the env var isn't set.
 const AGENT_PUBKEY =
   process.env.NEXT_PUBLIC_AGENT_PUBKEY ??
@@ -111,8 +161,8 @@ export function Header() {
         </button>
       </div>
 
-      {/* Right-centre: cluster indicator */}
-      <div className="hidden sm:flex items-center">
+      {/* Right-centre: cluster indicator + recorded replay badge */}
+      <div className="hidden sm:flex items-center gap-2">
         <span
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-[0.18em] uppercase"
           style={{
@@ -133,6 +183,8 @@ export function Header() {
           )}
           {clusterLabel(ACTIVE_CLUSTER)}
         </span>
+        {/* Recorded Replay badge — only shown when frame_sync is present */}
+        <ReplayBadge />
       </div>
 
       {/* Right: dynamic connection status */}

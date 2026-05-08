@@ -10,5 +10,6 @@ the AUXIN_SOURCE environment variable:
 
 from .base import TelemetrySource
 from .mock import MockSource, ReplaySource
+from .recorded import RecordedSource
 
-__all__ = ["TelemetrySource", "MockSource", "ReplaySource"]
+__all__ = ["TelemetrySource", "MockSource", "ReplaySource", "RecordedSource"]

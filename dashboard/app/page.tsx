@@ -13,6 +13,8 @@ import { SystemBloomCard } from "@/components/SystemBloomCard";
 import { RiskGauge } from "@/components/RiskGauge";
 import { TreasuryPanel } from "@/components/TreasuryPanel";
 import { InvoiceDownloader } from "@/components/InvoiceDownloader";
+import { VideoReplay } from "@/components/VideoReplay";
+import { useAuxinStore } from "@/lib/store";
 
 /**
  * "Auxin Circuit Bloom" — a tiling 6-armed mechanical snowflake.
@@ -149,6 +151,9 @@ function BackgroundPattern() {
 
 export default function DashboardPage() {
   const [isTwinFocus, setIsTwinFocus] = useState(false);
+  // Auto-detect recorded mode: frame_sync present in telemetry messages
+  const isRecordedMode = useAuxinStore((s) => s.frameSync !== null);
+
   // Mock feed runs immediately so the dashboard is never empty.
   // When the bridge connects (Phase 3), real data overrides mock telemetry
   // and real events are prepended to payments + compliance lists.
@@ -218,50 +223,80 @@ export default function DashboardPage() {
         >
           <div className="flex flex-col gap-4 min-h-0 lg:h-full">
 
-            {/* ── Row 1: Hero — RiskGauge + TreasuryPanel ── */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_2fr] shrink-0" style={{ minHeight: 320, maxHeight: 400 }}>
-              <div className="min-h-0">
-                <RiskGauge />
-              </div>
-              <div className="min-h-0">
-                <TreasuryPanel />
-              </div>
-            </div>
-
-            {/* ── Row 2: TelemetryCard + TwinViewport + PaymentTicker ── */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[290px_1fr_350px] flex-1 min-h-0">
-
-              {/* Left — joint telemetry */}
-              <div className="flex min-h-0 min-w-0 flex-col">
-                <TelemetryCard />
-              </div>
-
-              {/* Centre — digital twin viewport */}
-              <div className="flex h-full min-h-0 min-w-0 flex-col">
-                <TwinViewport onToggleFocusMode={() => setIsTwinFocus(true)} />
-              </div>
-
-              {/* Right — bloom + payments */}
-              <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden">
-                <div className="relative z-30 h-[86px] shrink-0">
-                  <SystemBloomCard />
+            {isRecordedMode ? (
+              /* ── RECORDED REPLAY LAYOUT ── */
+              <>
+                {/* Row 1 (hero): VideoReplay + RiskGauge + TreasuryPanel */}
+                <div
+                  className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(200px,25%)_minmax(200px,25%)] shrink-0"
+                  style={{ minHeight: 320, maxHeight: 440 }}
+                >
+                  <div className="min-h-0">
+                    <VideoReplay />
+                  </div>
+                  <div className="min-h-0">
+                    <RiskGauge />
+                  </div>
+                  <div className="min-h-0">
+                    <TreasuryPanel />
+                  </div>
                 </div>
-                <div className="relative z-10 min-h-0 flex-1 overflow-hidden">
-                  <PaymentTicker />
+
+                {/* Row 2: TelemetryCard + PaymentTicker + ComplianceTable */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[290px_1fr_1fr] flex-1 min-h-0">
+                  <div className="flex min-h-0 min-w-0 flex-col">
+                    <TelemetryCard />
+                  </div>
+                  <div className="flex min-h-0 min-w-0 flex-col">
+                    <PaymentTicker />
+                  </div>
+                  <div className="flex min-h-0 min-w-0 flex-col">
+                    <ComplianceTable />
+                  </div>
                 </div>
-              </div>
+              </>
+            ) : (
+              /* ── STANDARD LAYOUT (mock / twin / ros2) ── */
+              <>
+                {/* Row 1: Hero — RiskGauge + TreasuryPanel */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_2fr] shrink-0" style={{ minHeight: 320, maxHeight: 400 }}>
+                  <div className="min-h-0">
+                    <RiskGauge />
+                  </div>
+                  <div className="min-h-0">
+                    <TreasuryPanel />
+                  </div>
+                </div>
 
-            </div>
+                {/* Row 2: TelemetryCard + TwinViewport + PaymentTicker */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[290px_1fr_350px] flex-1 min-h-0">
+                  <div className="flex min-h-0 min-w-0 flex-col">
+                    <TelemetryCard />
+                  </div>
+                  <div className="flex h-full min-h-0 min-w-0 flex-col">
+                    <TwinViewport onToggleFocusMode={() => setIsTwinFocus(true)} />
+                  </div>
+                  <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden">
+                    <div className="relative z-30 h-[86px] shrink-0">
+                      <SystemBloomCard />
+                    </div>
+                    <div className="relative z-10 min-h-0 flex-1 overflow-hidden">
+                      <PaymentTicker />
+                    </div>
+                  </div>
+                </div>
 
-            {/* ── Row 3: ComplianceTable (full width) ── */}
-            <div className="shrink-0" style={{ minHeight: 180 }}>
-              <ComplianceTable />
-            </div>
+                {/* Row 3: ComplianceTable */}
+                <div className="shrink-0" style={{ minHeight: 180 }}>
+                  <ComplianceTable />
+                </div>
+              </>
+            )}
 
           </div>
         </main>
 
-        {isTwinFocus && (
+        {isTwinFocus && !isRecordedMode && (
           <>
             <div className="pointer-events-none fixed inset-0 bg-black/35" style={{ zIndex: 30 }} aria-hidden />
             <div className="fixed inset-3 z-40 lg:inset-6">

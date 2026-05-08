@@ -99,6 +99,54 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Bridge (recorded mode) ───────────────────────────────────────────────
+  # Usage: EPISODE_DIR=/path/to/episode docker-compose --profile recorded up
+  bridge-recorded:
+    build:
+      context: .
+      dockerfile: sdk/Dockerfile
+    networks: [auxin]
+    ports:
+      - "8766:8766"
+      - "8767:8767"
+      - "9090:9090"
+    environment:
+      AUXIN_SOURCE: recorded
+      AUXIN_CLUSTER: "${AUXIN_CLUSTER:-mainnet}"
+      AUXIN_EPISODE_DIR: /episode
+      AUXIN_PLAYBACK_SPEED: "${AUXIN_PLAYBACK_SPEED:-1.0}"
+      AUXIN_CAMERA_KEY: "${AUXIN_CAMERA_KEY:-ee_zed_m_left}"
+      AUXIN_LOOP: "${AUXIN_LOOP:-1}"
+      AUXIN_ORACLE_INTERVAL_FRAMES: "${AUXIN_ORACLE_INTERVAL_FRAMES:-30}"
+      AUXIN_PAYMENT_LAMPORTS: "${AUXIN_PAYMENT_LAMPORTS:-1000}"
+      BRIDGE_WS_PORT: "8766"
+      BRIDGE_HEALTHZ_PORT: "8767"
+      HELIUS_RPC_URL: "${HELIUS_RPC_URL}"
+      SOLANA_RPC_URL: "${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      PROVIDER_PUBKEY: "${PROVIDER_PUBKEY:-}"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      HW_KEYPAIR_PATH: /keys/hardware.json
+      OWNER_KEYPAIR_PATH: /keys/owner.json
+    volumes:
+      # Episode data directory (read-only)
+      - "${EPISODE_DIR}:/episode:ro"
+      # Hardware keypairs (read-only)
+      - "${HW_KEYPAIR_PATH:-${HOME}/.config/auxin/hardware.json}:/keys/hardware.json:ro"
+      - "${OWNER_KEYPAIR_PATH:-${HOME}/.config/auxin/owner.json}:/keys/owner.json:ro"
+    env_file:
+      - ./sdk/.env.mainnet
+    profiles:
+      - recorded
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,json; r=urllib.request.urlopen('http://localhost:8767/healthz',timeout=3); d=json.loads(r.read()); exit(0 if d.get('status')=='ok' else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 9
+      start_period: 20s
+
   # ── Umbra sidecar (only needed when AUXIN_PRIVACY=umbra) ────────────────
   umbra-bridge:
     build:

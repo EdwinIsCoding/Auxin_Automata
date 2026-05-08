@@ -19,7 +19,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAuxinStore } from "./store";
-import type { TelemetryFrame, JointData, PaymentEvent, ComplianceLog, RiskReport, TreasuryAnalysis, InvoiceMeta } from "./store";
+import type { TelemetryFrame, JointData, PaymentEvent, ComplianceLog, RiskReport, TreasuryAnalysis, InvoiceMeta, ReplayFrameSync } from "./store";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,14 @@ interface PythonTelemetryFrame {
   joint_torques:   number[];        // N·m
   end_effector_pose: Record<string, number>;
   anomaly_flags:   string[];        // e.g. ["torque_spike"]
+}
+
+interface BridgeFrameSync {
+  frame_index: number;
+  total_frames: number;
+  episode_progress: number;
+  camera_key: string;
+  loop_count: number;
 }
 
 interface BridgeComplianceEvent {
@@ -77,7 +85,7 @@ interface BridgeInvoiceReady {
 }
 
 type BridgeMessage =
-  | { type: "telemetry";        data: PythonTelemetryFrame }
+  | { type: "telemetry";        data: PythonTelemetryFrame; frame_sync?: BridgeFrameSync }
   | { type: "compliance_event"; data: BridgeComplianceEvent }
   | { type: "payment_event";    data: BridgePaymentEvent }
   | { type: "risk_report";      data: RiskReport }
@@ -171,8 +179,9 @@ export function useBridgeSocket(): void {
   const delayRef       = useRef(RECONNECT_BASE_MS);
   const timerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef   = useRef(false);
-  const frameIndexRef  = useRef(0);
-  const historiesRef   = useRef<HistoryPoint[][]>(makeEmptyHistories(JOINT_NAMES.length));
+  const frameIndexRef          = useRef(0);
+  const historiesRef           = useRef<HistoryPoint[][]>(makeEmptyHistories(JOINT_NAMES.length));
+  const lastFrameSyncUpdateRef = useRef(0);
 
   useEffect(() => {
     unmountedRef.current = false;
@@ -215,10 +224,23 @@ export function useBridgeSocket(): void {
             frameIndexRef.current++,
           );
           s.setTelemetry(frame);
+          // Propagate frame_sync if present (recorded mode only).
+          // Throttle to ~5 Hz so the frame counter in the UI stays readable
+          // rather than flashing at the full ~50 Hz robot loop rate.
+          if (msg.frame_sync) {
+            const now = Date.now();
+            if (now - lastFrameSyncUpdateRef.current >= 200) {
+              lastFrameSyncUpdateRef.current = now;
+              s.setFrameSync(msg.frame_sync as ReplayFrameSync);
+            }
+          }
         } else if (msg.type === "compliance_event") {
           s.addComplianceLog(adaptCompliance(msg.data));
+          s.incrementComplianceEventCount();
         } else if (msg.type === "payment_event") {
           s.addPayment(adaptPayment(msg.data));
+          s.incrementGeminiCallCount();
+          s.addPaidSol((msg.data.amount_lamports ?? 0) / 1_000_000_000);
         } else if (msg.type === "risk_report") {
           s.setRiskReport(msg.data);
         } else if (msg.type === "treasury_analysis") {

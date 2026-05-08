@@ -115,16 +115,22 @@ class SafetyOracle:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "gemini-2.0-flash",
-        timeout_s: float = 2.0,
+        model: str | None = None,
+        timeout_s: float = 8.0,
         torque_threshold: float = 80.0,
         _model: object | None = None,
+        prompt_file: Path | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
-        self._model_name = model
+        self._model_name = (
+            model
+            or os.environ.get("GEMINI_MODEL")
+            or "gemini-2.5-flash"
+        )
         self._timeout_s = timeout_s
         self._torque_threshold = torque_threshold
-        self._prompt_text = _PROMPT_FILE.read_text(encoding="utf-8")
+        resolved_prompt = prompt_file or _PROMPT_FILE
+        self._prompt_text = resolved_prompt.read_text(encoding="utf-8")
         self._genai_model: object | None = _model  # None → lazy-init on first check()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -197,30 +203,27 @@ class SafetyOracle:
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
-    def _get_or_create_model(self) -> object | None:
-        """Lazy-initialise the Gemini model.  Returns None if no API key."""
+    def _get_or_create_client(self) -> object | None:
+        """Lazy-initialise the Gemini async client.  Returns None if no API key."""
         if self._genai_model is not None:
             return self._genai_model
         if not self._api_key:
             return None
 
-        import google.generativeai as genai
+        from google import genai  # google-genai >= 1.0
 
-        genai.configure(api_key=self._api_key)
-        self._genai_model = genai.GenerativeModel(
-            model_name=self._model_name,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=_GEMINI_RESPONSE_SCHEMA,
-            ),
-            system_instruction=self._prompt_text,
-        )
-        log.debug("oracle.model_initialised", model=self._model_name)
+        client = genai.Client(api_key=self._api_key)
+        self._genai_model = client
+        log.debug("oracle.client_initialised", model=self._model_name)
         return self._genai_model
+
+    # Keep old name as alias for external callers / tests
+    def _get_or_create_model(self) -> object | None:
+        return self._get_or_create_client()
 
     async def _check_with_retry(
         self,
-        model: object,
+        client: object,
         frame: TelemetryFrame,
         image_path: Path,
     ) -> dict:
@@ -233,7 +236,7 @@ class SafetyOracle:
                 reraise=True,
             ):
                 with attempt:
-                    return await self._call_gemini(model, frame, image_path)
+                    return await self._call_gemini(client, frame, image_path)
         except RetryError as exc:
             last_exc = exc
         except Exception as exc:
@@ -242,24 +245,28 @@ class SafetyOracle:
 
     async def _call_gemini(
         self,
-        model: object,
+        client: object,
         frame: TelemetryFrame,
         image_path: Path,
     ) -> dict:
-        """Single Gemini API call.  Returns parsed dict matching _GEMINI_RESPONSE_SCHEMA."""
-        import base64
+        """Single Gemini API call using google-genai SDK.  Returns parsed dict."""
+        from google import genai
+        from google.genai import types
 
         image_bytes = Path(image_path).read_bytes()
-        # Inline-data format accepted by google-generativeai 0.x/1.x without PIL.
-        # This also works with stub test images (4-byte JPEG SOI+EOI).
-        image_blob = {
-            "mime_type": "image/jpeg",
-            "data": base64.b64encode(image_bytes).decode("utf-8"),
-        }
         user_prompt = _build_user_prompt(frame, self._torque_threshold)
 
-        response = await model.generate_content_async(  # type: ignore[union-attr]
-            [user_prompt, image_blob]
+        response = await client.aio.models.generate_content(  # type: ignore[union-attr]
+            model=self._model_name,
+            contents=[
+                user_prompt,
+                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=self._prompt_text,
+                response_mime_type="application/json",
+                response_schema=_GEMINI_RESPONSE_SCHEMA,
+            ),
         )
 
         raw_json = response.text
