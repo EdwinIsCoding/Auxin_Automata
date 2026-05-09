@@ -215,7 +215,7 @@ function ActionItem({ action }: { action: RecommendedAction }) {
             </span>
           )}
         </div>
-        <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: "#6b7280" }}>
+        <p className="text-[11px] mt-0.5 leading-relaxed break-words" style={{ color: "#6b7280" }}>
           {action.reasoning}
         </p>
       </div>
@@ -292,7 +292,7 @@ export function TreasuryPanel() {
                 border: "1px solid rgba(168,85,247,0.12)",
               }}
             >
-              <p className="text-[12px] leading-relaxed" style={{ color: "#c4b5fd" }}>
+              <p className="text-[12px] leading-relaxed break-words" style={{ color: "#c4b5fd" }}>
                 {analysis.summary}
               </p>
             </div>
@@ -319,7 +319,7 @@ export function TreasuryPanel() {
               {analysis.anomaly_flags.map((flag) => (
                 <span
                   key={flag}
-                  className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                  className="text-[10px] px-2 py-1 rounded font-medium leading-snug break-words"
                   style={{
                     background: "rgba(239,68,68,0.12)",
                     color: "#ef4444",
