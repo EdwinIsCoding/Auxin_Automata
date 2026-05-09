@@ -226,6 +226,7 @@ class AuxinProgramClient:
         self,
         ix: Instruction,
         signers: list[HardwareWallet],
+        skip_preflight: bool = False,
     ) -> str:
         """Build, sign, and send a VersionedTransaction.  Returns signature."""
         bh_resp = await self._rpc.get_latest_blockhash(commitment=Confirmed)
@@ -245,7 +246,9 @@ class AuxinProgramClient:
         resp = await self._rpc.send_transaction(
             tx,
             opts=TxOpts(
-                skip_preflight=False, preflight_commitment=Confirmed, skip_confirmation=True
+                skip_preflight=skip_preflight,
+                preflight_commitment=Confirmed,
+                skip_confirmation=True,
             ),
         )
         sig_obj: Signature = resp.value
@@ -380,7 +383,7 @@ class AuxinProgramClient:
         # forward one slot at a time (without re-fetching) to converge quickly
         # rather than chasing an ever-moving confirmed slot.
         slot_resp = await self._rpc.get_slot(commitment=Processed)
-        current_slot = slot_resp.value + 1  # +1 buffer for tx propagation latency
+        current_slot = slot_resp.value + 2  # +2 buffer: tx lands ~1-2 slots after submission
 
         last_err: Exception | None = None
         # Outer loop: on ConstraintSeeds advance slot by 1 and retry.
@@ -415,7 +418,10 @@ class AuxinProgramClient:
                 )
 
                 try:
-                    sig = await self._send(ix, [hw_wallet])
+                    # skip_preflight=True: preflight simulates against Confirmed state
+                    # (1-2 slots behind), giving a false ConstraintSeeds before the tx
+                    # reaches the network.  On-chain execution uses the real clock slot.
+                    sig = await self._send(ix, [hw_wallet], skip_preflight=True)
                 except Exception as exc:
                     err_str = str(exc)
                     # PDA already exists (same slot, same sub_index) → try next sub_index.
