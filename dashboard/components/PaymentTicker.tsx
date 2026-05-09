@@ -88,13 +88,11 @@ export function PaymentTicker() {
                 backgroundColor: i === 0 ? undefined : undefined,
               }}
             >
-              {/* Newest-row green dot */}
-              {i === 0 && (
-                <span
-                  className="shrink-0 w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: "#14F195", boxShadow: "0 0 6px #14F195" }}
-                />
-              )}
+              {/* Newest-row green dot — always rendered to keep columns aligned */}
+              <span
+                className={`shrink-0 w-1.5 h-1.5 rounded-full ${i !== 0 ? "invisible" : ""}`}
+                style={i === 0 ? { backgroundColor: "#14F195", boxShadow: "0 0 6px #14F195" } : undefined}
+              />
 
               {/* Timestamp */}
               <span className="shrink-0 tabular-nums" style={{ color: "#3d4663" }}>

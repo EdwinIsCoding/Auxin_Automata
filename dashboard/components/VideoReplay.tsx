@@ -158,15 +158,6 @@ export function VideoReplay() {
 
         {/* Live indicator */}
         <div className="ml-auto flex items-center gap-1.5">
-          {frameSync && (
-            <span
-              className="text-[10px] font-mono"
-              style={{ color: "#6b7280" }}
-            >
-              {frameSync.frame_index.toLocaleString()} /&nbsp;
-              {frameSync.total_frames.toLocaleString()}
-            </span>
-          )}
           {videoLoaded ? (
             <Wifi className="h-3 w-3" style={{ color: "#14F195" }} />
           ) : (
@@ -272,41 +263,6 @@ export function VideoReplay() {
           </div>
         )}
 
-        {/* Episode progress bar */}
-        {frameSync && videoLoaded && (
-          <div
-            className="absolute bottom-0 left-0 right-0"
-            style={{ backgroundColor: "rgba(7,11,20,0.75)", padding: "6px 10px" }}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className="flex-1 h-1 rounded-full overflow-hidden"
-                style={{ backgroundColor: "rgba(168,85,247,0.15)" }}
-              >
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: "#A855F7" }}
-                  animate={{ width: `${frameSync.episode_progress * 100}%` }}
-                  transition={{ duration: 0.3, ease: "linear" }}
-                />
-              </div>
-              <span
-                className="text-[9px] font-mono shrink-0"
-                style={{ color: "#6b7280" }}
-              >
-                {Math.round(frameSync.episode_progress * 100)}%
-              </span>
-              {frameSync.loop_count > 0 && (
-                <span
-                  className="text-[9px] font-bold tracking-widest uppercase shrink-0"
-                  style={{ color: "#A855F7" }}
-                >
-                  Loop&nbsp;{frameSync.loop_count + 1}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Oracle pulse label */}
         <AnimatePresence>

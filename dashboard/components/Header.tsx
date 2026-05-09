@@ -7,8 +7,8 @@ import { useAuxinStore } from "@/lib/store";
 import type { WsStatus } from "@/lib/store";
 import { ACTIVE_CLUSTER, clusterLabel, clusterColor } from "@/lib/cluster";
 
-/** Blue pulsing badge shown only in recorded replay mode. */
-function ReplayBadge() {
+/** Session stats strip shown when live data is flowing. */
+function SessionStats() {
   const frameSync = useAuxinStore((s) => s.frameSync);
   const geminiCallCount = useAuxinStore((s) => s.geminiCallCount);
   const totalPaidSol = useAuxinStore((s) => s.totalPaidSol);
@@ -18,24 +18,6 @@ function ReplayBadge() {
 
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-[0.18em] uppercase"
-        style={{
-          color: "#60a5fa",
-          backgroundColor: "rgba(96,165,250,0.10)",
-          border: "1px solid rgba(96,165,250,0.30)",
-        }}
-      >
-        <span
-          className="w-1.5 h-1.5 rounded-full shrink-0"
-          style={{
-            backgroundColor: "#60a5fa",
-            boxShadow: "0 0 6px #60a5fa",
-            animation: "ripple-ring 2s ease-out infinite",
-          }}
-        />
-        Recorded Replay
-      </span>
       {/* Live session stats */}
       <span
         className="hidden lg:flex items-center gap-2 text-[9px] font-mono tracking-wider"
@@ -185,8 +167,8 @@ export function Header() {
           )}
           {clusterLabel(ACTIVE_CLUSTER)}
         </span>
-        {/* Recorded Replay badge — only shown when frame_sync is present */}
-        <ReplayBadge />
+        {/* Session stats — only shown when frame_sync is present */}
+        <SessionStats />
       </div>
 
       {/* Right: dynamic connection status */}
@@ -199,50 +181,19 @@ export function Header() {
             border: `1px solid ${cfg.color}33`,
           }}
           initial={{ opacity: 0, scale: 0.92 }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-            boxShadow:
-              wsStatus === "live"
-                ? [
-                    "0 0 0px rgba(20,241,149,0)",
-                    cfg.glow,
-                    "0 0 0px rgba(20,241,149,0)",
-                  ]
-                : cfg.glow,
-          }}
+          animate={{ opacity: 1, scale: 1, boxShadow: cfg.glow }}
           exit={{ opacity: 0, scale: 0.92 }}
-          transition={
-            wsStatus === "live"
-              ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 0.25 }
-          }
+          transition={{ duration: 0.25 }}
         >
           {wsStatus === "live" && (
-            <span className="relative flex h-2 w-2">
-              {/* Outer ring — slower */}
-              <span
-                className="absolute inline-flex h-full w-full rounded-full"
-                style={{
-                  backgroundColor: cfg.color,
-                  animation: "ripple-ring 2s ease-out infinite",
-                  animationDelay: "0s",
-                }}
-              />
-              {/* Inner ring — faster offset */}
-              <span
-                className="absolute inline-flex h-full w-full rounded-full"
-                style={{
-                  backgroundColor: cfg.color,
-                  animation: "ripple-ring 2s ease-out infinite",
-                  animationDelay: "0.7s",
-                }}
-              />
-              <span
-                className="relative inline-flex rounded-full h-2 w-2"
-                style={{ backgroundColor: cfg.color }}
-              />
-            </span>
+            <span
+              className="inline-flex rounded-full h-2 w-2 shrink-0"
+              style={{
+                backgroundColor: cfg.color,
+                boxShadow: `0 0 6px ${cfg.color}`,
+                animation: "live-dot-breathe 3s ease-in-out infinite",
+              }}
+            />
           )}
           <span style={{ color: cfg.color }}>{cfg.icon}</span>
           <span

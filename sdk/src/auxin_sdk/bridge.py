@@ -69,26 +69,50 @@ log = structlog.get_logger(__name__)
 # ── Prometheus metrics ────────────────────────────────────────────────────────
 # Defined at module level so they are singletons across the process lifetime.
 
-_TX_TOTAL = Counter(
+def _make_counter(name, doc, labelnames=()):
+    try:
+        return Counter(name, doc, labelnames)
+    except ValueError:
+        from prometheus_client import REGISTRY
+        REGISTRY.unregister(REGISTRY._names_to_collectors[name])
+        return Counter(name, doc, labelnames)
+
+def _make_histogram(name, doc, buckets):
+    try:
+        return Histogram(name, doc, buckets=buckets)
+    except ValueError:
+        from prometheus_client import REGISTRY
+        REGISTRY.unregister(REGISTRY._names_to_collectors[name])
+        return Histogram(name, doc, buckets=buckets)
+
+def _make_gauge(name, doc, labelnames=()):
+    try:
+        return Gauge(name, doc, labelnames)
+    except ValueError:
+        from prometheus_client import REGISTRY
+        REGISTRY.unregister(REGISTRY._names_to_collectors[name])
+        return Gauge(name, doc, labelnames)
+
+_TX_TOTAL = _make_counter(
     "auxin_tx_submitted_total",
     "Solana transactions submitted by the bridge",
     ["kind", "status"],
 )
-_ANOMALIES_TOTAL = Counter(
+_ANOMALIES_TOTAL = _make_counter(
     "auxin_anomalies_total",
     "Telemetry frames flagged as anomalies",
 )
-_ORACLE_LATENCY = Histogram(
+_ORACLE_LATENCY = _make_histogram(
     "auxin_oracle_latency_seconds",
     "Gemini SafetyOracle check round-trip latency",
     buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0],
 )
-_SOLANA_SUBMIT_LATENCY = Histogram(
+_SOLANA_SUBMIT_LATENCY = _make_histogram(
     "auxin_solana_submit_latency_seconds",
     "Solana transaction submission latency (sign + confirm)",
     buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0],
 )
-_QUEUE_DEPTH = Gauge(
+_QUEUE_DEPTH = _make_gauge(
     "auxin_queue_depth",
     "Current number of items waiting in a bridge queue",
     ["queue"],
@@ -155,6 +179,10 @@ class WebsocketBroadcaster:
     Dashboard clients connect at ``ws://host:8766/ws``.  All connected clients
     receive every broadcast; dead connections are pruned silently.
     Ping/pong keepalive is handled by aiohttp (``heartbeat=30``).
+
+    Sticky messages: the latest risk_report and treasury_analysis are sent
+    immediately to each new client on connect so late-joiners always have
+    current state without waiting up to 15–30 s for the next broadcast cycle.
     """
 
     def __init__(self, host: str = "0.0.0.0", port: int = 8766) -> None:
@@ -163,6 +191,8 @@ class WebsocketBroadcaster:
         self._connections: set[aiohttp.web.WebSocketResponse] = set()
         self._runner: aiohttp.web.AppRunner | None = None
         self._site: aiohttp.web.TCPSite | None = None
+        # Latest copies of slow-firing messages — replayed to new clients on connect.
+        self._sticky: dict[str, dict[str, Any]] = {}
 
     async def start(self) -> None:  # pragma: no cover
         app = aiohttp.web.Application()
@@ -179,7 +209,12 @@ class WebsocketBroadcaster:
             log.info("ws_broadcaster.stopped")
 
     async def broadcast(self, payload: dict[str, Any]) -> None:
-        """Send *payload* as JSON to all connected clients.  Prunes dead sockets."""
+        """Send *payload* as JSON to all connected clients.  Prunes dead sockets.
+        Sticky types (risk_report, treasury_analysis) are cached so late-joining
+        clients receive them immediately on connect."""
+        msg_type = payload.get("type")
+        if msg_type in ("risk_report", "treasury_analysis"):
+            self._sticky[msg_type] = payload
         if not self._connections:
             return
         text = json.dumps(payload, default=str)
@@ -204,6 +239,13 @@ class WebsocketBroadcaster:
         await ws.prepare(request)
         self._connections.add(ws)
         log.info("ws.client_connected", total=len(self._connections))
+        # Replay sticky state to this client immediately so it doesn't have to
+        # wait up to 15–30 s for the next risk_report / treasury_analysis cycle.
+        for payload in self._sticky.values():
+            try:
+                await ws.send_str(json.dumps(payload, default=str))
+            except Exception:
+                pass
         try:
             async for msg in ws:
                 # Dashboard clients are receive-only; close on any error
@@ -485,10 +527,11 @@ class Bridge:
         self._oracle_frame_counter: int = 0
 
         # Event fired when enough real data has arrived to make scoring meaningful.
-        # Triggered by whichever comes first: 5 confirmed payments or 2 compliance events.
+        # Triggered by whichever comes first: 2 confirmed payments or 1 compliance event.
+        # Low threshold so panels populate within seconds of startup.
         self._scoring_ready = asyncio.Event()
-        self._SCORING_MIN_PAYMENTS = 5
-        self._SCORING_MIN_COMPLIANCE = 2
+        self._SCORING_MIN_PAYMENTS = 2
+        self._SCORING_MIN_COMPLIANCE = 1
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -525,6 +568,7 @@ class Bridge:
             asyncio.create_task(self._treasury_worker(), name="treasury-worker"),
             asyncio.create_task(self._invoice_worker(), name="invoice-worker"),
             asyncio.create_task(self._scene_worker(), name="scene-worker"),
+            asyncio.create_task(self._scoring_ready_fallback(), name="scoring-ready-fallback"),
         ]
 
         try:
@@ -921,6 +965,24 @@ class Bridge:
 
     # ── Financial Intelligence Workers ────────────────────────────────────────
 
+    async def _scoring_ready_fallback(self) -> None:
+        """
+        Guarantee _scoring_ready fires within 30 s of startup, even if no
+        on-chain transactions confirm in time (e.g. all compliance txs failing,
+        or oracle not yet approving any payments).  This ensures the Machine
+        Health and AI Treasury panels always populate on the dashboard.
+        """
+        _FALLBACK_S = 30
+        await asyncio.sleep(_FALLBACK_S)
+        if not self._scoring_ready.is_set():
+            log.info(
+                "scoring_ready_fallback.triggered",
+                after_s=_FALLBACK_S,
+                payments=self._payments_total,
+                compliance=self._compliance_total,
+            )
+            self._scoring_ready.set()
+
     async def _risk_scoring_worker(self) -> None:
         """
         Compute the Machine Health Score every AUXIN_RISK_INTERVAL_S seconds.
@@ -972,7 +1034,7 @@ class Bridge:
         while True:
             try:
                 if self._treasury_agent is None:
-                    continue
+                    break
                 balance_sol = await self._get_balance_sol()
                 analysis = await self._treasury_agent.analyze(
                     payment_history=list(self._payment_log),

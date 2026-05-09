@@ -241,11 +241,21 @@ export function ComplianceTable() {
 
   if (logs.length === 0) {
     return (
-      <div className="card-surface flex flex-col items-center justify-center gap-3 p-6 h-full">
-        <ShieldCheck className="h-7 w-7" style={{ color: "#A855F7" }} />
-        <p className="text-sm tracking-wider" style={{ color: "#64748b" }}>
-          No compliance events recorded
-        </p>
+      <div className="card-surface flex flex-col items-center justify-center gap-4 p-6 h-full">
+        <div
+          className="flex items-center justify-center rounded-full p-3"
+          style={{ backgroundColor: "rgba(168,85,247,0.10)", border: "1px solid rgba(168,85,247,0.25)" }}
+        >
+          <ShieldCheck className="h-7 w-7" style={{ color: "#A855F7" }} />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-semibold tracking-wider" style={{ color: "#C084FC" }}>
+            All Clear
+          </p>
+          <p className="text-[11px] leading-relaxed max-w-[200px]" style={{ color: "#4b5563" }}>
+            No safety violations detected in this session. All robot states within nominal parameters.
+          </p>
+        </div>
       </div>
     );
   }

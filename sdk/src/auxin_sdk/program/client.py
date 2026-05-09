@@ -53,7 +53,7 @@ from pathlib import Path
 
 import structlog
 from solana.rpc.async_api import AsyncClient
-from solana.rpc.commitment import Confirmed
+from solana.rpc.commitment import Confirmed, Processed
 from solana.rpc.types import TxOpts
 from solders.hash import Hash
 from solders.instruction import AccountMeta, Instruction
@@ -373,16 +373,19 @@ class AuxinProgramClient:
 
         agent_pda, _ = _find_agent_pda(self.program_id, owner_pubkey)
 
-        # Query the current slot so we can derive the correct PDA address.
-        # The on-chain Clock sysvar will reflect this slot when the tx executes
-        # (slots are ~400 ms; we submit immediately after querying).
-        slot_resp = await self._rpc.get_slot(commitment=Confirmed)
-        current_slot = slot_resp.value
+        # Use Processed commitment (most recent slot seen by the RPC node) to
+        # get a slot as close as possible to the one the validator will use when
+        # it processes our transaction.  Add +1 as a buffer for the ~400 ms it
+        # takes the tx to propagate and land.  On ConstraintSeeds we walk
+        # forward one slot at a time (without re-fetching) to converge quickly
+        # rather than chasing an ever-moving confirmed slot.
+        slot_resp = await self._rpc.get_slot(commitment=Processed)
+        current_slot = slot_resp.value + 1  # +1 buffer for tx propagation latency
 
         last_err: Exception | None = None
-        # Outer loop: refresh slot if ConstraintSeeds (slot advanced during submit).
-        # Up to 3 slot re-fetches to guard against sustained load.
-        for _slot_retry in range(3):
+        # Outer loop: on ConstraintSeeds advance slot by 1 and retry.
+        # Up to 10 retries to handle sustained load bursts.
+        for _slot_retry in range(10):
             for sub_index in range(256):
                 log_pda, _ = _find_compliance_log_pda(
                     self.program_id, agent_pda, current_slot, sub_index
@@ -424,8 +427,8 @@ class AuxinProgramClient:
                             sub_index=sub_index,
                         )
                         continue
-                    # ConstraintSeeds (0x7d6 / error 2006): slot advanced between
-                    # get_slot() and execution.  Re-fetch slot and retry from sub_index 0.
+                    # ConstraintSeeds (0x7d6 / error 2006): slot mismatch — advance
+                    # by 1 and retry without re-fetching (re-fetching chases the slot).
                     if "0x7d6" in err_str or "ConstraintSeeds" in err_str:
                         last_err = exc
                         log.warning(
@@ -433,9 +436,8 @@ class AuxinProgramClient:
                             old_slot=current_slot,
                             sub_index=sub_index,
                         )
-                        slot_resp = await self._rpc.get_slot(commitment=Confirmed)
-                        current_slot = slot_resp.value
-                        break  # break inner loop → retry with new slot
+                        current_slot += 1
+                        break  # break inner loop → retry with incremented slot
                     raise
 
                 else:
@@ -455,10 +457,10 @@ class AuxinProgramClient:
                 raise RuntimeError(
                     f"log_compliance: exhausted 256 sub_index values at slot {current_slot}"
                 ) from last_err
-            # Outer loop continues with new slot.
+            # Outer loop continues with incremented slot.
 
         raise RuntimeError(
-            f"log_compliance: slot keeps advancing after 3 re-fetches (last slot {current_slot})"
+            f"log_compliance: slot keeps advancing after 10 retries (last slot {current_slot})"
         ) from last_err
 
     # ── update_provider_whitelist ─────────────────────────────────────────────

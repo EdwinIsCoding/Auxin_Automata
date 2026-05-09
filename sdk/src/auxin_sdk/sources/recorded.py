@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -119,6 +120,9 @@ class RecordedSource(TelemetrySource):
         # Video capture (lazy-opened on first get_frame_at call)
         self._cap: Any = None  # cv2.VideoCapture — imported lazily
         self._cap_camera_key: str | None = None
+        # Lock protecting self._cap — get_frame_at is called from a threadpool
+        # executor and can be invoked by multiple workers concurrently.
+        self._cap_lock = threading.Lock()
 
         # Playback state (updated by stream, read by get_frame_sync_info)
         self._current_idx: int = 0
@@ -234,12 +238,13 @@ class RecordedSource(TelemetrySource):
     async def close(self) -> None:
         """Release the video capture and stop the stream."""
         self._closed = True
-        if self._cap is not None:
-            try:
-                self._cap.release()
-            except Exception:
-                pass
-            self._cap = None
+        with self._cap_lock:
+            if self._cap is not None:
+                try:
+                    self._cap.release()
+                except Exception:
+                    pass
+                self._cap = None
         log.info("recorded_source.closed")
 
     # ── Optional methods (duck-typed by bridge) ───────────────────────────────
@@ -273,6 +278,9 @@ class RecordedSource(TelemetrySource):
         """
         Return the RGB frame from the video file closest to the given robot frame index.
         Returns None if the video is unavailable or the index is out of range.
+
+        Thread-safe: protected by _cap_lock since this is called from a threadpool
+        executor and multiple workers (payment + scene) can invoke it concurrently.
         """
         if not self._frame_map or robot_frame_idx >= len(self._robot_rows):
             return None
@@ -281,28 +289,29 @@ class RecordedSource(TelemetrySource):
         if video_path is None:
             return None
 
-        # Lazy-open video capture
-        self._ensure_cap(video_path)
-        if self._cap is None:
-            return None
+        with self._cap_lock:
+            # Lazy-open video capture
+            self._ensure_cap(video_path)
+            if self._cap is None:
+                return None
 
-        # Find the corresponding video frame via the frame map
-        # Match by relative position in the recording
-        robot_progress = robot_frame_idx / max(len(self._robot_rows) - 1, 1)
-        map_idx = min(
-            int(robot_progress * len(self._frame_map)),
-            len(self._frame_map) - 1,
-        )
-        video_frame_idx = self._frame_map[map_idx].get("rgb_video_frame", map_idx)
+            # Find the corresponding video frame via the frame map
+            # Match by relative position in the recording
+            robot_progress = robot_frame_idx / max(len(self._robot_rows) - 1, 1)
+            map_idx = min(
+                int(robot_progress * len(self._frame_map)),
+                len(self._frame_map) - 1,
+            )
+            video_frame_idx = self._frame_map[map_idx].get("rgb_video_frame", map_idx)
 
-        try:
-            self._cap.set(1, video_frame_idx)  # CAP_PROP_POS_FRAMES = 1
-            ret, frame = self._cap.read()
-            if ret and frame is not None:
-                import cv2
-                return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        except Exception as exc:
-            log.warning("recorded_source.frame_read_error error=%s", exc)
+            try:
+                self._cap.set(1, video_frame_idx)  # CAP_PROP_POS_FRAMES = 1
+                ret, frame = self._cap.read()
+                if ret and frame is not None:
+                    import cv2
+                    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            except Exception as exc:
+                log.warning("recorded_source.frame_read_error error=%s", exc)
 
         return None
 
@@ -403,6 +412,14 @@ class RecordedSource(TelemetrySource):
                 log.warning("recorded_source.video_open_failed path=%s", video_path)
                 self._cap = None
             else:
+                # Disable FFmpeg's internal frame-level threading.
+                # Random seeks (cap.set CAP_PROP_POS_FRAMES) trigger a race in
+                # libavcodec's pthread_frame.c async_lock when multi-threading is
+                # active, causing "Assertion fctx->async_lock failed" crashes.
+                # CAP_PROP_THREAD_COUNT is not present in all OpenCV builds.
+                _thread_prop = getattr(cv2, "CAP_PROP_THREAD_COUNT", None)
+                if _thread_prop is not None:
+                    self._cap.set(_thread_prop, 1)
                 self._cap_camera_key = self._camera_key
                 log.info("recorded_source.video_opened path=%s", video_path)
         except ImportError:
