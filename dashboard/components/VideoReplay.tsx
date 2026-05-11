@@ -10,7 +10,7 @@
  * (wall-clock at playback, not original recording timestamp).
  *
  * Features:
- *  - Multi-camera tab bar (ee_zed_m_left, ee_zed_m_right, third_person_d405)
+ *  - Multi-camera tab bar (wrist_d405, third_person_d405)
  *  - Episode progress bar + frame index overlay
  *  - Oracle pulse: green flash on payment approval, red flash on anomaly
  *  - Graceful degradation if bridge or video endpoint is unreachable
@@ -27,11 +27,11 @@ const BRIDGE_HTTP =
   (process.env.NEXT_PUBLIC_BRIDGE_HTTP_URL ?? "http://localhost:8767").replace(/\/$/, "");
 
 const CAMERA_LABELS: Record<string, string> = {
-  ee_zed_m_left: "EE ZED Left",
-  ee_zed_m_right: "EE ZED Right",
+  wrist_d405: "Wrist",
+  third_person_d405: "Third Person",
 };
 
-const AVAILABLE_CAMERAS = ["ee_zed_m_left", "ee_zed_m_right"];
+const AVAILABLE_CAMERAS = ["wrist_d405", "third_person_d405"];
 
 type OraclePulse = "approved" | "anomaly" | null;
 
@@ -40,7 +40,7 @@ export function VideoReplay() {
   const telemetry = useAuxinStore((s) => s.telemetry);
   const sceneDescription = useAuxinStore((s) => s.sceneDescription);
 
-  const [activeCamera, setActiveCamera] = useState("ee_zed_m_left");
+  const [activeCamera, setActiveCamera] = useState("wrist_d405");
   const [videoError, setVideoError] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [oraclePulse, setOraclePulse] = useState<OraclePulse>(null);

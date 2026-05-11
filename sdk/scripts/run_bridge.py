@@ -336,7 +336,7 @@ async def main() -> None:
     # Do not start the bridge until all camera video files are confirmed present
     # and decodable by the browser (H.264 in MP4).
     if hasattr(source, "get_video_path"):
-        _CAMERAS = ["ee_zed_m_left", "ee_zed_m_right", "third_person_d405"]
+        _CAMERAS = ["wrist_d405", "third_person_d405"]
         _missing: list[str] = []
         for _cam in _CAMERAS:
             _vp = source.get_video_path(_cam)
