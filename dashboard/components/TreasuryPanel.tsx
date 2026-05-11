@@ -99,10 +99,10 @@ function MetricCard({
           {label}
         </span>
       </div>
-      <span className="text-lg font-bold tabular-nums" style={{ color: colour }}>
+      <span className="text-lg font-bold tabular-nums break-all" style={{ color: colour }}>
         {value}
       </span>
-      {sub && <span className="text-[10px]" style={{ color: "#6b7280" }}>{sub}</span>}
+      {sub && <span className="text-[10px] break-all" style={{ color: "#6b7280" }}>{sub}</span>}
     </div>
   );
 }
@@ -197,9 +197,9 @@ function ActionItem({ action }: { action: RecommendedAction }) {
         {cfg.label}
       </span>
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[12px] font-medium" style={{ color: "#e5e7eb" }}>
+          <span className="text-[12px] font-medium break-all" style={{ color: "#e5e7eb" }}>
             {action.action.replace(/_/g, " ")}
           </span>
           {action.auto_executable && (
@@ -215,7 +215,7 @@ function ActionItem({ action }: { action: RecommendedAction }) {
             </span>
           )}
         </div>
-        <p className="text-[11px] mt-0.5 leading-relaxed break-words" style={{ color: "#6b7280" }}>
+        <p className="text-[11px] mt-0.5 leading-relaxed break-all" style={{ color: "#6b7280" }}>
           {action.reasoning}
         </p>
       </div>
@@ -257,7 +257,7 @@ export function TreasuryPanel() {
       {!analysis ? (
         <Skeleton />
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3">
           {/* ── Metric cards row ── */}
           <div className="grid grid-cols-2 gap-2">
             <MetricCard
@@ -292,7 +292,7 @@ export function TreasuryPanel() {
                 border: "1px solid rgba(168,85,247,0.12)",
               }}
             >
-              <p className="text-[12px] leading-relaxed break-words" style={{ color: "#c4b5fd" }}>
+              <p className="text-[12px] leading-relaxed break-all" style={{ color: "#c4b5fd" }}>
                 {analysis.summary}
               </p>
             </div>
