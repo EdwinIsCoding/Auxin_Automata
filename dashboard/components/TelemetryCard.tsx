@@ -59,6 +59,15 @@ function JointRow({
         </p>
       </div>
 
+      {/* Torque */}
+      <div className="w-20 shrink-0">
+        <p className="label-chip" style={{ color: "#3d4663" }}>torque</p>
+        <p className="value-primary text-xs font-mono" style={{ color: "#e2e8f0" }}>
+          {torque >= 0 ? "+" : ""}
+          {torque.toFixed(1)} Nm
+        </p>
+      </div>
+
       {/* Sparkline with gradient fill */}
       <div className="flex-1 h-8">
         <ResponsiveContainer width="100%" height="100%">
