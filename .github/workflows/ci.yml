@@ -120,7 +120,6 @@ jobs:
     # Anchor install (avm, Solana CLI, cargo) is slow and flaky in CI.
     # Not in the ci-pass gate — failures are informational only.
     continue-on-error: true
-    if: hashFiles('programs/Anchor.toml') != ''
     steps:
       - uses: actions/checkout@v4
 
