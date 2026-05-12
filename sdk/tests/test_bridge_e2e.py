@@ -122,6 +122,7 @@ def _make_bridge(
         owner_pubkey=wallet.pubkey,
         provider_pubkey=provider_pubkey or Keypair().pubkey(),
         healthz_port=0,  # disable HTTP servers in unit tests
+        _oracle_interval_frames=1,  # every frame triggers oracle in tests
     )
 
 

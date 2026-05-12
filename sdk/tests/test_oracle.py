@@ -33,7 +33,10 @@ def _make_frame(
 
 
 def _mock_gemini_model(payload: dict) -> MagicMock:
-    """Return a MagicMock that behaves like a GenerativeModel returning *payload*."""
+    """Return a MagicMock that behaves like a google-genai Client returning *payload*.
+
+    The oracle uses ``client.aio.models.generate_content(...)`` (google-genai >= 1.0 API).
+    """
     mock_usage = MagicMock()
     mock_usage.prompt_token_count = 120
     mock_usage.candidates_token_count = 40
@@ -42,9 +45,9 @@ def _mock_gemini_model(payload: dict) -> MagicMock:
     mock_response.text = json.dumps(payload)
     mock_response.usage_metadata = mock_usage
 
-    mock_model = MagicMock()
-    mock_model.generate_content_async = AsyncMock(return_value=mock_response)
-    return mock_model
+    mock_client = MagicMock()
+    mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
+    return mock_client
 
 
 def _approve_payload() -> dict:
@@ -386,7 +389,7 @@ async def test_oracle_retries_on_transient_error(tmp_path: Path) -> None:
         return mock_response
 
     mock_model = MagicMock()
-    mock_model.generate_content_async = _flaky
+    mock_model.aio.models.generate_content = _flaky
 
     oracle = SafetyOracle(api_key="test-key", _model=mock_model, timeout_s=30.0)
     decision = await oracle.check(_make_frame(), img)

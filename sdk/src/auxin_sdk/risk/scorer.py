@@ -344,6 +344,14 @@ def _compute_trend_data(
     # Live (today) score is the anchor
     today_score = _clamp(current_overall if current_overall is not None else 60.0)
 
+    # Empty wallet: no history means no variation — return a flat baseline curve
+    if not payment_history and not compliance_history:
+        flat_points = [
+            {"date": (now - timedelta(days=d)).date().isoformat(), "score": round(today_score, 1)}
+            for d in range(6, -1, -1)
+        ]
+        return flat_points, "stable"
+
     # Build relative scores: each entry is (day_offset_from_today, score_delta_above_today)
     # day_offset 6 = earliest (6 days ago), 0 = today
     # We define deltas above today's score so the curve scales with whatever live score is.
@@ -368,7 +376,54 @@ def _compute_trend_data(
     # Force last point to exactly match live score
     points[-1]["score"] = round(today_score, 1)
 
-    return points, "declining"
+    # ── Compute trend label from actual history ───────────────────────────────
+    # Compare recent window (0-3 days) vs older window (3-6 days) on two signals:
+    #   1. Compliance severity penalty — fewer/lighter recent events → better
+    #   2. Payment activity rate — more recent payments → more active (improving)
+    cutoff_recent = now - timedelta(days=3)
+    cutoff_older = now - timedelta(days=6)
+
+    def _window_compliance_penalty(events: list[dict[str, Any]], lo: datetime, hi: datetime) -> float:
+        return sum(
+            _SEVERITY_WEIGHTS.get(e.get("severity", 0), 0.0)
+            for e in events
+            if lo <= _parse_ts(e.get("timestamp")) < hi
+        )
+
+    recent_penalty = _window_compliance_penalty(compliance_history, cutoff_recent, now)
+    older_penalty = _window_compliance_penalty(compliance_history, cutoff_older, cutoff_recent)
+
+    recent_payment_count = sum(
+        1 for p in payment_history if _parse_ts(p.get("timestamp")) >= cutoff_recent
+    )
+    older_payment_count = sum(
+        1 for p in payment_history
+        if cutoff_older <= _parse_ts(p.get("timestamp")) < cutoff_recent
+    )
+
+    improving = 0
+    declining = 0
+
+    # Compliance signal: fewer/lighter recent events is good
+    if recent_penalty < older_penalty - 0.05:
+        improving += 1
+    elif recent_penalty > older_penalty + 0.15:
+        declining += 1
+
+    # Activity signal: more recent payments is good
+    if recent_payment_count > older_payment_count * 1.2:
+        improving += 1
+    elif recent_payment_count < older_payment_count * 0.7:
+        declining += 1
+
+    if declining > improving:
+        trend = "declining"
+    elif improving > declining:
+        trend = "improving"
+    else:
+        trend = "stable"
+
+    return points, trend
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

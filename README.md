@@ -1,6 +1,11 @@
 # Auxin Automata
 
 [![CI](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-197%20passed-brightgreen)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-75%25-yellowgreen)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
+[![Anchor Tests](https://img.shields.io/badge/Anchor%20tests-23%20passed-brightgreen)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](./LICENSE)
 
 **Autonomous hardware wallets · M2M micropayments · Immutable compliance on Solana**
 
@@ -374,7 +379,7 @@ Grafana at `:3001` auto-provisions four panels: tx rate by kind/status, oracle l
 ## Tests
 
 ```bash
-cd sdk && uv run pytest                       # 105 tests, 80.2% coverage (≥80% enforced in CI)
+cd sdk && uv run pytest                       # 197 tests, 75% coverage (≥75% enforced in CI)
 cd twin && uv run pytest                      # 16 tests
 cd dashboard && pnpm lint && pnpm build       # 0 ESLint warnings, clean build
 cd programs && anchor test                    # 23 TypeScript tests

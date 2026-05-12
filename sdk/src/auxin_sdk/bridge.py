@@ -462,6 +462,7 @@ class Bridge:
         helius_api_key: str | None = None,
         healthz_port: int = 8767,
         metrics_port: int = 9090,
+        _oracle_interval_frames: int | None = None,
     ) -> None:
         self.source = source
         self.oracle = oracle
@@ -533,6 +534,7 @@ class Bridge:
 
         # Frame counter for oracle interval throttling
         self._oracle_frame_counter: int = 0
+        self._oracle_interval_frames: int = _oracle_interval_frames or ORACLE_INTERVAL_FRAMES
 
         # Event fired when enough real data has arrived to make scoring meaningful.
         # Triggered by whichever comes first: 2 confirmed payments or 1 compliance event.
@@ -705,7 +707,7 @@ class Bridge:
         # (c) Normal path — payment, throttled by oracle interval.
         # Every Nth frame gets queued for oracle check; the rest are counted but skipped.
         effective_interval = max(
-            1, int(ORACLE_INTERVAL_FRAMES * self._oracle_interval_multiplier)
+            1, int(self._oracle_interval_frames * self._oracle_interval_multiplier)
         )
         self._oracle_frame_counter += 1
         if self._oracle_frame_counter % effective_interval != 0:

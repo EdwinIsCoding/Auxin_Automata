@@ -106,7 +106,7 @@ uv run python -m pytest -m network tests/test_bridge_e2e.py -v
 GEMINI_API_KEY=... uv run python -m pytest tests/eval_oracle.py -v
 ```
 
-Current status: **105/105 unit tests pass · 80.2% coverage (≥80% enforced in CI)**. Network tests are excluded by default (`-m 'not network'`) — add `-m network` to run Devnet E2E tests.
+Current status: **197/197 unit tests pass · 75% coverage (≥75% enforced in CI)**. Network tests are excluded by default (`-m 'not network'`) — add `-m network` to run Devnet E2E tests.
 
 ---
 
