@@ -21,8 +21,6 @@ htmlcov/
 *.pyo
 
 # uv
-uv.lock
-# keep sdk/uv.lock and twin/uv.lock — they ARE committed
 
 # ── Node ─────────────────────────────────────────────────────────────────────
 node_modules/
@@ -118,3 +116,5 @@ data/
 *.lock
 !pnpm-lock.yaml
 !Cargo.lock
+!sdk/uv.lock
+!twin/uv.lock

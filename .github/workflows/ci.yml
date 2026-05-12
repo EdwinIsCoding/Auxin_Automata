@@ -72,7 +72,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install twin deps
-        run: cd twin && uv sync
+        run: cd twin && uv sync --group dev
 
       - name: Ruff lint
         run: cd twin && uv run ruff check .
