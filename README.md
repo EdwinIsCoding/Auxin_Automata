@@ -1,8 +1,8 @@
 # Auxin Automata
 
 [![CI](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
-[![SDK Tests](https://img.shields.io/badge/SDK%20tests-197%20passed-brightgreen)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-75%25-yellowgreen)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-211%20passed-brightgreen)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-78%25-green)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
 [![Anchor Tests](https://img.shields.io/badge/Anchor%20tests-23%20passed-brightgreen)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](./LICENSE)

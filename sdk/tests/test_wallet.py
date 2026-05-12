@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from solders.keypair import Keypair
@@ -112,6 +113,50 @@ def test_sign_transaction_returns_object_without_sign_method(tmp_path: Path) -> 
     sentinel = object()
     result = wallet.sign_transaction(sentinel)
     assert result is sentinel
+
+
+# ── Network methods (mocked) ──────────────────────────────────────────────────
+
+
+async def test_get_balance_returns_lamports(tmp_path: Path) -> None:
+    """get_balance calls RPC and returns the integer lamport value."""
+    wallet = HardwareWallet.load_or_create(tmp_path / "hardware.json")
+
+    mock_response = MagicMock()
+    mock_response.value = 2_000_000_000  # 2 SOL
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get_balance = AsyncMock(return_value=mock_response)
+
+    with patch("auxin_sdk.wallet.AsyncClient", return_value=mock_client):
+        balance = await wallet.get_balance("https://api.devnet.solana.com")
+
+    assert balance == 2_000_000_000
+    mock_client.get_balance.assert_called_once_with(wallet.pubkey)
+
+
+async def test_request_airdrop_returns_signature(tmp_path: Path) -> None:
+    """request_airdrop calls RPC and returns the signature string."""
+    wallet = HardwareWallet.load_or_create(tmp_path / "hardware.json")
+
+    mock_response = MagicMock()
+    mock_response.value = "5xJkAirdropSig123abc"
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.request_airdrop = AsyncMock(return_value=mock_response)
+
+    with patch("auxin_sdk.wallet.AsyncClient", return_value=mock_client):
+        sig = await wallet.request_airdrop("https://api.devnet.solana.com", 1.0)
+
+    assert sig == "5xJkAirdropSig123abc"
+    # Verify correct lamports were requested (1 SOL = 1_000_000_000 lamports)
+    call_args = mock_client.request_airdrop.call_args
+    assert call_args[0][0] == wallet.pubkey
+    assert call_args[0][1] == 1_000_000_000
 
 
 # ── Network integration (Devnet — skipped by default) ─────────────────────────

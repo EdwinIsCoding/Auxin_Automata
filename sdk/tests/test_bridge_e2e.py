@@ -392,6 +392,302 @@ class TestBridgeUnit:
             await bridge.process(_normal_frame())
         assert bridge._frames_processed == 5
 
+    # ── Replay sentinel flags ─────────────────────────────────────────────────
+
+    async def test_replay_session_start_enqueues_severity_info(self, wallet):
+        """replay_session_start frame gets severity=0 (COMPLIANCE_SEVERITY_INFO)."""
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+        from auxin_sdk.bridge import COMPLIANCE_SEVERITY_INFO, REASON_CODE_REPLAY_START
+
+        frame = TelemetryFrame(
+            timestamp=datetime.now(UTC),
+            joint_positions=[0.0] * 6,
+            joint_velocities=[0.0] * 6,
+            joint_torques=[0.0] * 6,
+            end_effector_pose={"x": 0.0, "y": 0.0, "z": 0.0},
+            anomaly_flags=["replay_session_start"],
+        )
+        await bridge.process(frame)
+
+        assert bridge._compliance_queue.qsize() == 1
+        task = bridge._compliance_queue.get_nowait()
+        assert task.severity == COMPLIANCE_SEVERITY_INFO
+        assert task.reason_code == REASON_CODE_REPLAY_START
+
+    async def test_replay_session_end_enqueues_severity_info(self, wallet):
+        """replay_session_end frame gets severity=0 with correct reason code."""
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+        from auxin_sdk.bridge import COMPLIANCE_SEVERITY_INFO, REASON_CODE_REPLAY_END
+
+        frame = TelemetryFrame(
+            timestamp=datetime.now(UTC),
+            joint_positions=[0.0] * 6,
+            joint_velocities=[0.0] * 6,
+            joint_torques=[0.0] * 6,
+            end_effector_pose={"x": 0.0, "y": 0.0, "z": 0.0},
+            anomaly_flags=["replay_session_end"],
+        )
+        await bridge.process(frame)
+
+        assert bridge._compliance_queue.qsize() == 1
+        task = bridge._compliance_queue.get_nowait()
+        assert task.severity == COMPLIANCE_SEVERITY_INFO
+        assert task.reason_code == REASON_CODE_REPLAY_END
+
+    # ── Compliance rate-limiting ──────────────────────────────────────────────
+
+    async def test_compliance_throttle_skips_rapid_anomaly_repeat(self, wallet):
+        """Second anomaly within compliance_min_interval_s is throttled (skipped)."""
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+        # Default interval is 45s; _last_compliance_logged_at=0 means elapsed>>45
+        # so the first anomaly passes. After it passes, _last_compliance_logged_at
+        # is set to time.monotonic(). Set a huge interval so the second is throttled.
+        await bridge.process(_anomaly_frame())  # allowed (elapsed from epoch >> 45)
+        assert bridge._compliance_queue.qsize() == 1
+
+        bridge._compliance_min_interval_s = 999_999.0  # guarantee throttle
+        await bridge.process(_anomaly_frame())  # throttled (elapsed ≈ 0)
+
+        # Queue should still have only the first frame
+        assert bridge._compliance_queue.qsize() == 1
+
+    # ── Compliance worker error handling ──────────────────────────────────────
+
+    async def test_compliance_worker_handles_log_compliance_error(self, wallet):
+        """Compliance worker continues after log_compliance raises an exception."""
+        program_client = _mock_program_client()
+        program_client.log_compliance = AsyncMock(side_effect=RuntimeError("RPC down"))
+
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            program_client,
+            wallet,
+            _mock_broadcaster(),
+        )
+
+        frame = _anomaly_frame()
+        task = _ComplianceTask(
+            frame=frame,
+            telemetry_hash=sha256_hex(frame),
+            severity=COMPLIANCE_SEVERITY_ANOMALY,
+            reason_code=0x0001,
+        )
+        await bridge._compliance_queue.put(task)
+
+        worker = asyncio.create_task(bridge._compliance_worker())
+        await asyncio.sleep(0.05)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        # Queue should be drained (task_done called) even on error
+        assert bridge._compliance_queue.qsize() == 0
+        # compliance_total should NOT increment on error
+        assert bridge._compliance_total == 0
+
+    # ── Payment worker error handling ─────────────────────────────────────────
+
+    async def test_payment_worker_handles_oracle_exception(self, wallet):
+        """Payment worker continues after oracle.check raises an exception."""
+        oracle = _mock_oracle()
+        oracle.check = AsyncMock(side_effect=RuntimeError("Gemini down"))
+
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            oracle,
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+
+        await bridge._payment_queue.put(_PaymentTask(frame=_normal_frame()))
+
+        worker = asyncio.create_task(bridge._payment_worker())
+        await asyncio.sleep(0.05)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        # Queue drained despite error
+        assert bridge._payment_queue.qsize() == 0
+        assert bridge._payments_total == 0
+
+    async def test_payment_worker_no_provider_pubkey_skips_payment(self, wallet):
+        """When provider_pubkey is None, oracle-approved frames skip the payment."""
+        program_client = _mock_program_client()
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(approved=True),
+            program_client,
+            wallet,
+            _mock_broadcaster(),
+            provider_pubkey=None,
+        )
+        # Override the provider_pubkey to None explicitly
+        bridge.provider_pubkey = None
+
+        await bridge._payment_queue.put(_PaymentTask(frame=_normal_frame()))
+
+        worker = asyncio.create_task(bridge._payment_worker())
+        await asyncio.sleep(0.05)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        program_client.stream_payment.assert_not_called()
+
+    # ── Risk scoring worker ───────────────────────────────────────────────────
+
+    async def test_risk_scoring_worker_broadcasts_risk_report(self, wallet):
+        """Risk scoring worker broadcasts a risk_report once _scoring_ready is set."""
+        broadcaster = _mock_broadcaster()
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            broadcaster,
+        )
+        # Patch balance so worker doesn't need real RPC
+        bridge._get_balance_sol = AsyncMock(return_value=1.5)
+
+        # Signal scoring ready immediately
+        bridge._scoring_ready.set()
+
+        import auxin_sdk.bridge as bridge_mod
+
+        original = bridge_mod._RISK_INTERVAL_S
+
+        # Patch the interval so the worker fires immediately
+        bridge_mod._RISK_INTERVAL_S = 0
+        try:
+            worker = asyncio.create_task(bridge._risk_scoring_worker())
+            await asyncio.sleep(0.1)
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+        finally:
+            bridge_mod._RISK_INTERVAL_S = original
+
+        # Should have received at least one risk_report broadcast
+        calls = [c[0][0] for c in broadcaster.broadcast.call_args_list]
+        risk_calls = [c for c in calls if c.get("type") == "risk_report"]
+        assert len(risk_calls) >= 1
+        assert bridge._latest_risk_report is not None
+
+    # ── Treasury worker ───────────────────────────────────────────────────────
+
+    async def test_treasury_worker_none_agent_exits_immediately(self, wallet):
+        """If _treasury_agent is None, the treasury worker exits its loop."""
+        broadcaster = _mock_broadcaster()
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            broadcaster,
+        )
+        bridge._treasury_agent = None
+        bridge._scoring_ready.set()
+
+        import auxin_sdk.bridge as bridge_mod
+
+        original = bridge_mod._TREASURY_INTERVAL_S
+        bridge_mod._TREASURY_INTERVAL_S = 0
+        try:
+            worker = asyncio.create_task(bridge._treasury_worker())
+            await asyncio.sleep(0.05)
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+        finally:
+            bridge_mod._TREASURY_INTERVAL_S = original
+
+        # No treasury broadcasts when agent is None
+        calls = [c[0][0] for c in broadcaster.broadcast.call_args_list]
+        treasury_calls = [c for c in calls if c.get("type") == "treasury_analysis"]
+        assert len(treasury_calls) == 0
+
+    # ── _get_balance_sol ──────────────────────────────────────────────────────
+
+    async def test_get_balance_sol_returns_float_on_success(self, wallet):
+        """_get_balance_sol converts lamports from RPC to SOL float."""
+        program_client = _mock_program_client()
+        mock_resp = MagicMock()
+        mock_resp.value = 1_500_000_000  # 1.5 SOL
+        program_client._rpc = MagicMock()
+        program_client._rpc.get_balance = AsyncMock(return_value=mock_resp)
+
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            program_client,
+            wallet,
+            _mock_broadcaster(),
+        )
+
+        balance = await bridge._get_balance_sol()
+        assert abs(balance - 1.5) < 0.001
+
+    async def test_get_balance_sol_returns_zero_on_exception(self, wallet):
+        """_get_balance_sol returns 0.0 when RPC raises."""
+        program_client = _mock_program_client()
+        program_client._rpc = MagicMock()
+        program_client._rpc.get_balance = AsyncMock(side_effect=RuntimeError("RPC error"))
+
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            program_client,
+            wallet,
+            _mock_broadcaster(),
+        )
+
+        balance = await bridge._get_balance_sol()
+        assert balance == 0.0
+
+    # ── queue_depths property ─────────────────────────────────────────────────
+
+    async def test_queue_depths_property(self, wallet):
+        """queue_depths returns dict with compliance and payment keys."""
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+        depths = bridge.queue_depths
+        assert "compliance" in depths
+        assert "payment" in depths
+        assert depths["compliance"] == 0
+        assert depths["payment"] == 0
+
+    async def test_uptime_seconds_property(self, wallet):
+        """uptime_seconds is non-negative."""
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+        assert bridge.uptime_seconds >= 0.0
+
 
 # ── Devnet E2E test ───────────────────────────────────────────────────────────
 
