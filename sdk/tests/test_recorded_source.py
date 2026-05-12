@@ -17,6 +17,8 @@ import json
 import time
 from pathlib import Path
 
+import pytest
+
 from auxin_sdk.schema import TelemetryFrame
 from auxin_sdk.sources.recorded import RecordedSource
 
@@ -276,3 +278,144 @@ def test_playback_speed_affects_timing(tmp_path: Path) -> None:
     elapsed = asyncio.get_event_loop().run_until_complete(time_replay(100.0))
     # Should complete in well under 1 second even at 1x (5 * 20ms = 100ms)
     assert elapsed < 2.0, f"Playback took too long: {elapsed:.2f}s"
+
+
+# ── Edge case tests ──────────────────────────────────────────────────────────
+
+
+def _make_minimal_episode(tmp_path: Path, rows: int = 5) -> Path:
+    """Create a minimal episode directory with robot.jsonl only."""
+    episode = tmp_path / "episode_minimal"
+    episode.mkdir()
+    robot = episode / "robot.jsonl"
+    lines = []
+    for i in range(rows):
+        lines.append(
+            json.dumps(
+                {
+                    "timestamp_ns": 520_000_000_000_000 + i * 20_000_000,
+                    "robot_state": {
+                        "q": [0.01 * i] * 7,
+                        "dq": [0.001 * i] * 7,
+                        "tcp_position_xyz": [0.1, 0.2, 0.3],
+                        "tcp_orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+                        "gripper_state": "OPEN",
+                        "gripper_width": 0.077,
+                    },
+                    "status": {
+                        "fault_flags": {},
+                    },
+                }
+            )
+        )
+    robot.write_text("\n".join(lines) + "\n")
+    # Minimal metadata
+    (episode / "session_metadata.json").write_text("{}", encoding="utf-8")
+    (episode / "episode_events.jsonl").write_text("", encoding="utf-8")
+    return episode
+
+
+def test_missing_robot_jsonl_raises(tmp_path: Path) -> None:
+    """FileNotFoundError when robot.jsonl does not exist."""
+    episode = tmp_path / "episode_empty"
+    episode.mkdir()
+    (episode / "session_metadata.json").write_text("{}")
+    (episode / "episode_events.jsonl").write_text("")
+    with pytest.raises(FileNotFoundError):
+        RecordedSource(episode)
+
+
+def test_empty_robot_jsonl_raises(tmp_path: Path) -> None:
+    """ValueError when robot.jsonl is empty."""
+    episode = tmp_path / "episode_empty_jsonl"
+    episode.mkdir()
+    (episode / "robot.jsonl").write_text("")
+    (episode / "session_metadata.json").write_text("{}")
+    (episode / "episode_events.jsonl").write_text("")
+    with pytest.raises(ValueError):
+        RecordedSource(episode)
+
+
+def test_stream_max_loops(tmp_path: Path) -> None:
+    """Max loops terminates the stream."""
+    episode = _make_minimal_episode(tmp_path, rows=2)
+    src = RecordedSource(episode, loop=True, max_loops=2, playback_speed=9999)
+
+    async def collect_all() -> int:
+        count = 0
+        async for _ in src.stream():
+            count += 1
+            if count > 200:
+                break
+        return count
+
+    count = asyncio.get_event_loop().run_until_complete(collect_all())
+    # 2 loops x (1 start + 2 data + 1 end) = 8
+    assert count == 8
+
+
+def test_close_stops_stream(tmp_path: Path) -> None:
+    """close() sets _closed and stops the stream."""
+    episode = _make_minimal_episode(tmp_path, rows=10)
+    src = RecordedSource(episode, loop=True, playback_speed=9999)
+
+    async def run() -> None:
+        count = 0
+        async for _ in src.stream():
+            count += 1
+            if count >= 3:
+                await src.close()
+        assert src._closed
+
+    asyncio.get_event_loop().run_until_complete(run())
+
+
+def test_get_frame_at_no_frame_map(tmp_path: Path) -> None:
+    """get_frame_at returns None when no frame map exists."""
+    episode = _make_minimal_episode(tmp_path)
+    src = RecordedSource(episode)
+    assert src.get_frame_at(0) is None
+
+
+def test_get_available_cameras_empty(tmp_path: Path) -> None:
+    """get_available_cameras returns empty list when no cameras with rgb.mp4."""
+    episode = _make_minimal_episode(tmp_path)
+    src = RecordedSource(episode)
+    assert src.get_available_cameras() == []
+
+
+def test_total_frames_property(tmp_path: Path) -> None:
+    """total_frames returns correct count."""
+    episode = _make_minimal_episode(tmp_path, rows=7)
+    src = RecordedSource(episode)
+    assert src.total_frames == 7
+
+
+def test_torque_spike_detection(tmp_path: Path) -> None:
+    """Torque spike check fires when max torque exceeds threshold."""
+    episode = _make_minimal_episode(tmp_path, rows=1)
+    # Torques in _parse_row are always [0.0]*7, so use a negative threshold
+    # to trigger the `max(abs(t)) > threshold` branch (0.0 > -1.0 is True).
+    src = RecordedSource(episode, loop=False, torque_threshold=-1.0)
+
+    async def collect_flags() -> list[str]:
+        async for frame in src.stream():
+            if "torque_spike" in frame.anomaly_flags:
+                return frame.anomaly_flags
+        return []
+
+    flags = asyncio.get_event_loop().run_until_complete(collect_flags())
+    assert "torque_spike" in flags
+
+
+def test_close_releases_video_capture(tmp_path: Path) -> None:
+    """close() releases _cap if it was set."""
+    episode = _make_minimal_episode(tmp_path)
+    src = RecordedSource(episode)
+    # Simulate a cap being set
+    mock_cap = type("MockCap", (), {"release": lambda self: None})()
+    src._cap = mock_cap
+
+    asyncio.get_event_loop().run_until_complete(src.close())
+    assert src._cap is None
+    assert src._closed

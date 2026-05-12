@@ -8,11 +8,11 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from auxin_sdk.oracle import OracleDecision, SafetyOracle, _local_fallback_core
+from auxin_sdk.oracle import OracleDecision, SafetyOracle, SceneDescription, _local_fallback_core
 from auxin_sdk.schema import TelemetryFrame
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -366,6 +366,109 @@ async def test_oracle_records_prompt_version(tmp_path: Path) -> None:
     decision = await oracle.check(_make_frame(), img)
 
     assert decision.prompt_version == "safety_oracle_v1"
+
+
+# ── describe_scene ───────────────────────────────────────────────────────
+
+
+class TestDescribeScene:
+    async def test_describe_scene_no_api_key(self, tmp_path: Path) -> None:
+        """Without API key, returns fallback SceneDescription."""
+        oracle = SafetyOracle(api_key=None)
+        image_path = tmp_path / "test.jpg"
+        image_path.write_bytes(b"\xff\xd8\xff\xe0")
+        result = await oracle.describe_scene(image_path)
+        assert isinstance(result, SceneDescription)
+        assert result.used_fallback is True
+        assert result.objects == []
+        assert result.confidence == 0.0
+
+    async def test_describe_scene_success(self, tmp_path: Path) -> None:
+        """Successful describe_scene returns parsed SceneDescription."""
+        oracle = SafetyOracle(api_key="fake-key")
+        image_path = tmp_path / "test.jpg"
+        image_path.write_bytes(b"\xff\xd8\xff\xe0")
+
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(
+            {
+                "objects": ["robot_arm", "table"],
+                "scene_summary": "A robot arm on a table",
+                "confidence": 0.9,
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
+        oracle._genai_model = mock_client
+        oracle._scene_prompt_text = "Describe the scene"
+
+        result = await oracle.describe_scene(image_path)
+        assert result.used_fallback is False
+        assert "robot_arm" in result.objects
+
+    async def test_describe_scene_exception_fallback(self, tmp_path: Path) -> None:
+        """On API error, returns fallback SceneDescription."""
+        oracle = SafetyOracle(api_key="fake-key")
+        image_path = tmp_path / "test.jpg"
+        image_path.write_bytes(b"\xff\xd8\xff\xe0")
+
+        mock_client = MagicMock()
+        mock_client.aio.models.generate_content = AsyncMock(side_effect=RuntimeError("API down"))
+        oracle._genai_model = mock_client
+        oracle._scene_prompt_text = "Describe"
+
+        result = await oracle.describe_scene(image_path)
+        assert result.used_fallback is True
+
+
+# ── _get_or_create_client ────────────────────────────────────────────────
+
+
+class TestGetOrCreateClient:
+    def test_returns_none_without_api_key(self) -> None:
+        oracle = SafetyOracle(api_key=None)
+        assert oracle._get_or_create_client() is None
+
+    def test_creates_client_with_api_key(self) -> None:
+        oracle = SafetyOracle(api_key="fake-key")
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = MagicMock()
+        with patch.dict("sys.modules", {"google": MagicMock(), "google.genai": mock_genai}):
+            client = oracle._get_or_create_client()
+        assert client is not None
+
+    def test_returns_cached_client(self) -> None:
+        oracle = SafetyOracle(api_key="fake-key")
+        sentinel = object()
+        oracle._genai_model = sentinel
+        assert oracle._get_or_create_client() is sentinel
+
+
+# ── Local fallback obstacle label ────────────────────────────────────────
+
+
+async def test_local_fallback_detects_obstacle_label(tmp_path: Path) -> None:
+    """Local fallback checks labels.json for 'obstacle' label."""
+    oracle = SafetyOracle(api_key=None)
+    # Create a fake image and labels.json
+    image_path = tmp_path / "obstacle_01.jpg"
+    image_path.write_bytes(b"\xff\xd8")
+    labels = {"obstacle_01.jpg": "obstacle"}
+    (tmp_path / "labels.json").write_text(json.dumps(labels))
+
+    frame = TelemetryFrame(
+        timestamp=datetime.now(UTC),
+        joint_positions=[0.1] * 6,
+        joint_velocities=[0.0] * 6,
+        joint_torques=[5.0] * 6,
+        end_effector_pose={"x": 0, "y": 0, "z": 0},
+        anomaly_flags=[],
+    )
+    result = await oracle.check(frame, image_path)
+    # Should be denied due to obstacle label
+    assert result.action_approved is False
+    assert "obstacle" in result.reason
 
 
 # ── Retry behaviour ───────────────────────────────────────────────────────────

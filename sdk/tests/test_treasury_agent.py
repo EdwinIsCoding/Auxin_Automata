@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -210,3 +211,79 @@ class TestAnalysisSchema:
             + result.budget_allocation.buffer
         )
         assert abs(total_alloc - 100.0) < 1.0
+
+
+class TestPromptLoading:
+    def test_missing_prompt_uses_fallback(self):
+        """When prompt file is missing, a fallback prompt is used."""
+        original_path = TreasuryAgent.PROMPT_PATH
+        try:
+            TreasuryAgent.PROMPT_PATH = Path("/nonexistent/prompt.md")
+            agent = TreasuryAgent(api_key=None)
+            assert "treasury manager" in agent._system_prompt.lower()
+        finally:
+            TreasuryAgent.PROMPT_PATH = original_path
+
+
+class TestParseTs:
+    def test_datetime_without_tzinfo(self):
+        dt = datetime(2026, 1, 1, 12, 0, 0)
+        result = TreasuryAgent._parse_ts(dt)
+        assert result.tzinfo is not None
+
+    def test_invalid_string(self):
+        result = TreasuryAgent._parse_ts("not-a-date")
+        assert result.year == 1970
+
+    def test_none_value(self):
+        result = TreasuryAgent._parse_ts(None)
+        assert result.year == 1970
+
+
+class TestWarningRunway:
+    @pytest.mark.asyncio
+    async def test_fallback_analysis_warning_runway(self):
+        """Runway between 12-48h gives status 'warning'."""
+        agent = TreasuryAgent(api_key=None)
+        now = datetime.now(UTC)
+        # 24 payments of 1M lamports each in last 24h => burn_rate = 1M lam/hr
+        # balance 0.024 SOL = 24M lamports => runway = 24M / 1M = 24h => "warning"
+        payments = [
+            {
+                "timestamp": (now - timedelta(hours=i)).isoformat(),
+                "lamports": 1_000_000,
+                "provider": "P1",
+                "success": True,
+            }
+            for i in range(24)
+        ]
+        report = await agent.analyze(payments, [], balance=0.024, risk_report=None)
+        assert report.runway_status == "warning"
+
+
+class TestCallLlmRecovery:
+    @pytest.mark.asyncio
+    async def test_truncated_json_recovery(self):
+        """_call_llm recovers from truncated JSON by finding last brace."""
+        agent = TreasuryAgent(api_key="fake-key")
+
+        truncated_json = (
+            '{"burn_rate_lamports_per_hour": 5000, "runway_hours": 100.0, '
+            '"runway_status": "healthy", "budget_allocation": {"inference": 70, '
+            '"reserve": 20, "buffer": 10}, "recommended_actions": [], '
+            '"anomaly_flags": [], "summary": "All good"} extra garbage here'
+        )
+
+        mock_message = MagicMock()
+        mock_content = MagicMock()
+        mock_content.text = truncated_json
+        mock_message.content = [mock_content]
+
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_message)
+
+        with patch("auxin_sdk.treasury.agent.anthropic") as mock_anthropic:
+            mock_anthropic.AsyncAnthropic.return_value = mock_client
+            result = await agent._call_llm("context", 1.0, 75.0)
+
+        assert isinstance(result, TreasuryAnalysis)

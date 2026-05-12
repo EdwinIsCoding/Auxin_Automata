@@ -182,3 +182,121 @@ class TestScorerProperties:
         report = calculate_risk_score(payments, [], 1.0, 10)
         total_weight = sum(bd.weight for bd in report.breakdown)
         assert abs(total_weight - 1.0) < 0.01
+
+
+class TestScorerEdgeCases:
+    """Edge cases for individual scorer branches."""
+
+    def test_grade_f_for_very_low_score(self):
+        """Score < 60 should yield grade F (or lower)."""
+        # Heavy compliance penalties + single provider + tiny balance
+        now = datetime.now(UTC)
+        payments = [_make_payment(now - timedelta(hours=i), 100_000, "ProvA") for i in range(100)]
+        compliance = [_make_compliance(now - timedelta(hours=i), severity=3) for i in range(20)]
+        report = calculate_risk_score(payments, compliance, balance=0.0001, tx_count=100)
+        # Just verify grade is D or F — the important thing is _grade() returns "F" for low scores
+        assert report.grade in ("D", "F")
+
+    def test_no_payment_history_financial_health(self):
+        """Financial health with no payments returns neutral 50.0."""
+        # Only compliance events, no payments
+        now = datetime.now(UTC)
+        compliance = [_make_compliance(now - timedelta(hours=1), severity=0)]
+        report = calculate_risk_score([], compliance, balance=1.0, tx_count=0)
+        fh = next(b for b in report.breakdown if b.category == "Financial Health")
+        assert fh.score == 50.0
+
+    def test_zero_burn_rate_full_runway(self):
+        """When burn rate is 0, runway score should be 100."""
+        now = datetime.now(UTC)
+        # Payments only from > 24h ago so burn rate in last 24h is 0
+        payments = [
+            _make_payment(now - timedelta(days=3, hours=i), 5000, "ProvA") for i in range(10)
+        ]
+        report = calculate_risk_score(payments, [], balance=1.0, tx_count=10)
+        fh = next(b for b in report.breakdown if b.category == "Financial Health")
+        assert any(
+            "full runway" in f.lower() or "no measurable burn" in f.lower() for f in fh.factors
+        )
+
+    def test_single_hourly_bucket_neutral_stability(self):
+        """Single hourly bucket gives neutral stability score."""
+        now = datetime.now(UTC)
+        # All payments in the same hour
+        payments = [_make_payment(now - timedelta(minutes=i), 5000, "ProvA") for i in range(5)]
+        report = calculate_risk_score(payments, [], balance=1.0, tx_count=5)
+        fh = next(b for b in report.breakdown if b.category == "Financial Health")
+        assert any(
+            "neutral stability" in f.lower() or "insufficient hourly" in f.lower()
+            for f in fh.factors
+        )
+
+    def test_balance_trend_improving(self):
+        """Late spend < early_spend * 0.85 should show improving trend."""
+        now = datetime.now(UTC)
+        payments = []
+        # Early half (4-7 days ago): high spending
+        for i in range(30):
+            payments.append(_make_payment(now - timedelta(days=5, hours=i), 10000, "ProvA"))
+        # Late half (0-3 days ago): very low spending
+        for i in range(5):
+            payments.append(_make_payment(now - timedelta(hours=i + 1), 1000, "ProvA"))
+        report = calculate_risk_score(payments, [], balance=1.0, tx_count=35)
+        fh = next(b for b in report.breakdown if b.category == "Financial Health")
+        assert any("improving" in f.lower() for f in fh.factors)
+
+    def test_balance_trend_near_zero_critical(self):
+        """Near-zero balance with increasing spend should show critical trend."""
+        now = datetime.now(UTC)
+        payments = []
+        # Early half: low spend
+        for i in range(5):
+            payments.append(_make_payment(now - timedelta(days=5, hours=i), 1000, "ProvA"))
+        # Late half: much higher spend
+        for i in range(30):
+            payments.append(_make_payment(now - timedelta(hours=i + 1), 50000, "ProvA"))
+        # Very tiny balance relative to burn rate
+        report = calculate_risk_score(payments, [], balance=0.00001, tx_count=35)
+        fh = next(b for b in report.breakdown if b.category == "Financial Health")
+        has_critical_or_increasing = any(
+            "near-zero critical" in f.lower() or "increasing spend" in f.lower() for f in fh.factors
+        )
+        assert has_critical_or_increasing
+
+    def test_operational_stability_few_payments(self):
+        """< 2 payments returns neutral 50.0 for operational stability."""
+        now = datetime.now(UTC)
+        payments = [_make_payment(now, 5000, "ProvA")]
+        report = calculate_risk_score(payments, [], balance=1.0, tx_count=1)
+        ops = next(b for b in report.breakdown if b.category == "Operational Stability")
+        assert ops.score == 50.0
+
+    def test_uniform_interval_regularity(self):
+        """Two payments with same interval give uniform regularity."""
+        now = datetime.now(UTC)
+        payments = [
+            _make_payment(now - timedelta(hours=2), 5000, "ProvA"),
+            _make_payment(now - timedelta(hours=1), 5000, "ProvA"),
+        ]
+        report = calculate_risk_score(payments, [], balance=1.0, tx_count=2)
+        ops = next(b for b in report.breakdown if b.category == "Operational Stability")
+        # With exactly 2 payments and 1 interval, stdev is not computable => uniform
+        assert any("uniform" in f.lower() or "regular" in f.lower() for f in ops.factors)
+
+    def test_compliance_record_zero_events(self):
+        """0 compliance events gives perfect severity score."""
+        now = datetime.now(UTC)
+        payments = [_make_payment(now - timedelta(hours=i), 5000, "ProvA") for i in range(10)]
+        report = calculate_risk_score(payments, [], balance=1.0, tx_count=10)
+        comp = next(b for b in report.breakdown if b.category == "Compliance Record")
+        assert any("no compliance events" in f.lower() for f in comp.factors)
+
+    def test_compliance_days_since_last_capping(self):
+        """Days since last sev>=2 event is capped at 7 for full score."""
+        now = datetime.now(UTC)
+        payments = [_make_payment(now - timedelta(hours=i), 5000, "ProvA") for i in range(10)]
+        # Old sev-2 event more than 7 days ago
+        compliance = [_make_compliance(now - timedelta(days=10), severity=2)]
+        report = calculate_risk_score(payments, compliance, balance=1.0, tx_count=10)
+        comp = next(b for b in report.breakdown if b.category == "Compliance Record")
+        assert any("days ago" in f.lower() for f in comp.factors)

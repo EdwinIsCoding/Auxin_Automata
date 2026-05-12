@@ -351,3 +351,68 @@ def test_num_joints_zero_raises() -> None:
 def test_anomaly_every_too_small_raises() -> None:
     with pytest.raises(ValueError, match="anomaly_every"):
         MockSource(anomaly_every=2)
+
+
+# ── MockSource.close() / ReplaySource edge cases ────────────────────────────
+
+
+async def test_close_releases_record_file_handle(tmp_path: Path) -> None:
+    """MockSource.close() closes the file handle if recording."""
+    record_path = tmp_path / "session.jsonl"
+    source = MockSource(rate_hz=0, seed=0)
+    with source.record_to(record_path) as s:
+        await collect(s, 3)
+        # File handle should be open inside the context
+        assert s._record_fh is not None
+        await s.close()
+        # close() should have released it
+        assert s._record_fh is None
+
+
+async def test_replay_source_close_is_noop() -> None:
+    """ReplaySource.close() is a no-op but must not raise."""
+    replay = ReplaySource(Path("/nonexistent"), rate_hz=0)
+    await replay.close()  # should not raise
+
+
+async def test_replay_source_with_positive_rate_hz(tmp_path: Path) -> None:
+    """ReplaySource with rate_hz > 0 introduces delays (covers sleep branch)."""
+    record_path = tmp_path / "session.jsonl"
+    source = MockSource(rate_hz=0, seed=0)
+    with source.record_to(record_path) as s:
+        await collect(s, 3)
+    # Use a very high rate_hz so sleep is tiny
+    replay = ReplaySource(record_path, rate_hz=10000)
+    frames = await collect(replay, 3)
+    assert len(frames) == 3
+
+
+async def test_replay_source_skips_blank_lines(tmp_path: Path) -> None:
+    """ReplaySource skips blank lines in the JSONL file."""
+    record_path = tmp_path / "session.jsonl"
+    source = MockSource(rate_hz=0, seed=0)
+    with source.record_to(record_path) as s:
+        await collect(s, 3)
+    # Insert blank lines
+    content = record_path.read_text()
+    lines = content.strip().split("\n")
+    with_blanks = "\n\n".join(lines) + "\n\n"
+    record_path.write_text(with_blanks)
+    replay = ReplaySource(record_path, rate_hz=0)
+    frames = await collect(replay, 999)
+    assert len(frames) == 3
+
+
+# ── Fixture error paths ─────────────────────────────────────────────────────
+
+
+def test_sample_workspace_image_missing_labels_raises(tmp_path: Path) -> None:
+    """FileNotFoundError when labels.json doesn't exist."""
+    with pytest.raises(FileNotFoundError, match="labels.json"):
+        sample_workspace_image(fixtures_dir=tmp_path)
+
+
+def test_all_fixture_images_missing_labels_raises(tmp_path: Path) -> None:
+    """FileNotFoundError when labels.json doesn't exist."""
+    with pytest.raises(FileNotFoundError, match="labels.json"):
+        all_fixture_images(fixtures_dir=tmp_path)

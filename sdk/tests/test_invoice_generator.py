@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 
@@ -189,3 +190,25 @@ class TestPdfExport:
             pdf_path = gen.render_pdf(invoice)
             assert pdf_path.exists()
             assert pdf_path.stat().st_size > 0
+
+    @pytest.mark.asyncio
+    async def test_render_pdf_html_fallback(self):
+        """When no PDF engine is available, render_pdf saves HTML as fallback."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(3),
+                _make_compliance(1),
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
+            with (
+                patch("auxin_sdk.invoicing.generator.shutil.which", return_value=None),
+                patch.dict("sys.modules", {"weasyprint": None, "pdfkit": None}),
+            ):
+                result = gen.render_pdf(invoice)
+            assert result is not None
+            assert result.exists()
+            assert result.stat().st_size > 0

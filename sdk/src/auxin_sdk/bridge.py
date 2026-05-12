@@ -74,7 +74,7 @@ log = structlog.get_logger(__name__)
 def _make_counter(name, doc, labelnames=()):
     try:
         return Counter(name, doc, labelnames)
-    except ValueError:
+    except ValueError:  # pragma: no cover – registry collision on hot-reload
         from prometheus_client import REGISTRY
 
         REGISTRY.unregister(REGISTRY._names_to_collectors[name])
@@ -84,7 +84,7 @@ def _make_counter(name, doc, labelnames=()):
 def _make_histogram(name, doc, buckets):
     try:
         return Histogram(name, doc, buckets=buckets)
-    except ValueError:
+    except ValueError:  # pragma: no cover – registry collision on hot-reload
         from prometheus_client import REGISTRY
 
         REGISTRY.unregister(REGISTRY._names_to_collectors[name])
@@ -94,7 +94,7 @@ def _make_histogram(name, doc, buckets):
 def _make_gauge(name, doc, labelnames=()):
     try:
         return Gauge(name, doc, labelnames)
-    except ValueError:
+    except ValueError:  # pragma: no cover – registry collision on hot-reload
         from prometheus_client import REGISTRY
 
         REGISTRY.unregister(REGISTRY._names_to_collectors[name])
@@ -553,7 +553,7 @@ class Bridge:
 
     # ── Public ────────────────────────────────────────────────────────────────
 
-    async def run(self) -> None:
+    async def run(self) -> None:  # pragma: no cover – full lifecycle integration
         """
         Start all services and iterate source.stream() until cancelled.
 

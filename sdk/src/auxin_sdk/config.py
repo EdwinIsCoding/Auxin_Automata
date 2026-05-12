@@ -73,7 +73,7 @@ def get_cluster_config() -> ClusterConfig:
         cluster = "devnet"
         env_path = _SDK_ROOT / ".env.devnet"
         if not env_path.exists():
-            env_path = _SDK_ROOT / ".env"  # legacy single-cluster fallback
+            env_path = _SDK_ROOT / ".env"  # pragma: no cover – legacy fallback
 
     file_vars = _load_env_file(env_path)
 
