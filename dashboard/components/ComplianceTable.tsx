@@ -173,7 +173,7 @@ function ComplianceTimeline({ logs }: { logs: ComplianceLog[] }) {
       </div>
       {/* Stacked vertical bars — animate up from 0 on mount */}
       <div
-        className="flex items-end gap-0.5"
+        className="flex items-end gap-0.5 overflow-hidden"
         style={{ height: 28 }}
       >
         {recent.map((log, i) => {

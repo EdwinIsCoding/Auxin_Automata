@@ -44,9 +44,12 @@ dashboard/
 │   ├── PaymentTicker.tsx       Live ComputePaymentEvent scroll with Explorer links
 │   ├── ComplianceTable.tsx     Sortable ComplianceEvent table: severity badges, hash copy-button
 │   ├── TwinViewport.tsx        JPEG stream overlay (twin mode) or react-three-fiber 3D fallback
+│   ├── RiskGauge.tsx           Radial arc gauge A–F + 4 animated dimension bars + 7-day sparkline
+│   ├── TreasuryPanel.tsx       Burn rate, runway (colour-coded), budget donut, AI summary + action list
+│   ├── InvoiceDownloader.tsx   Latest period dates + SOL total; one-click PDF from bridge HTTP endpoint
 │   └── SentryProvider.tsx      Client boundary — lazy-loads @sentry/react when DSN is set
 └── lib/
-    ├── store.ts                Zustand: telemetry, payments, complianceLogs, wsStatus
+    ├── store.ts                Zustand: telemetry, payments, complianceLogs, wsStatus, riskReport, treasuryAnalysis
     ├── solana.ts               Connection + PublicKey factory from env vars
     ├── anchor.ts               Custom BorshReader — decodes Anchor events without Node modules
     ├── useProgramEvents.ts     onLogs subscription: binary decode → text fallback → dedup

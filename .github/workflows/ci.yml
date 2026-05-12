@@ -5,11 +5,17 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same branch/PR to avoid redundant builds
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # ── Python: lint + test (sdk + twin) ───────────────────────────────────────
-  python-lint-test:
-    name: Python Lint & Test
+  # ── Python: lint + test (SDK) ───────────────────────────────────────────────
+  sdk-lint-test:
+    name: SDK — Lint & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,35 +24,95 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
 
       - name: Set up Python 3.11
         run: uv python install 3.11
 
       - name: Install SDK deps
-        run: cd sdk && uv sync
+        run: cd sdk && uv sync --group dev
 
-      - name: Ruff lint (sdk)
+      - name: Ruff lint
         run: cd sdk && uv run ruff check .
 
-      - name: Ruff format check (sdk)
+      - name: Ruff format check
         run: cd sdk && uv run ruff format --check .
 
-      - name: Pytest (sdk)
-        run: cd sdk && uv run pytest --cov=auxin_sdk --cov-fail-under=80
+      - name: Pytest + coverage
+        run: |
+          cd sdk && uv run pytest \
+            -m 'not network' \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=80
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: ${{ !cancelled() }}
+        with:
+          files: sdk/coverage.xml
+          flags: sdk
+          fail_ci_if_error: false
+
+  # ── Python: lint + test (Twin) ──────────────────────────────────────────────
+  twin-lint-test:
+    name: Twin — Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
 
       - name: Install twin deps
         run: cd twin && uv sync
 
-      - name: Ruff lint (twin)
+      - name: Ruff lint
         run: cd twin && uv run ruff check .
 
-      - name: Pytest (twin)
+      - name: Pytest
         run: cd twin && uv run pytest
 
-  # ── Anchor: build + test ────────────────────────────────────────────────────
-  # Skipped until Phase 2A initialises the Anchor workspace (programs/Anchor.toml).
+  # ── Dashboard: lint + type-check + build ───────────────────────────────────
+  dashboard-build-lint:
+    name: Dashboard — Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - name: Install deps
+        run: cd dashboard && pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: cd dashboard && pnpm lint
+
+      - name: Build
+        run: cd dashboard && pnpm build
+        env:
+          NEXT_PUBLIC_HELIUS_RPC_URL: ""
+          NEXT_PUBLIC_PROGRAM_ID: "11111111111111111111111111111111"
+          NEXT_PUBLIC_BRIDGE_WS_URL: "ws://localhost:8766"
+
+  # ── Anchor: build + clippy + test ──────────────────────────────────────────
   anchor-build-test:
-    name: Anchor Build & Test
+    name: Anchor — Build & Test
     runs-on: ubuntu-latest
     if: hashFiles('programs/Anchor.toml') != ''
     steps:
@@ -71,16 +137,18 @@ jobs:
           avm install 0.30.1
           avm use 0.30.1
 
-      - name: Set up Node 20 + pnpm
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
       - uses: pnpm/action-setup@v4
         with:
           version: 9
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: programs/pnpm-lock.yaml
+
       - name: Install program test deps
-        run: cd programs && pnpm install
+        run: cd programs && pnpm install --frozen-lockfile
 
       - name: Anchor build
         run: cd programs && anchor build
@@ -93,32 +161,32 @@ jobs:
       - name: Anchor test (localnet)
         run: cd programs && anchor test
 
-  # ── Dashboard: build + lint ─────────────────────────────────────────────────
-  dashboard-build-lint:
-    name: Dashboard Build & Lint
+  # ── Gate: required for branch protection rules ─────────────────────────────
+  ci-pass:
+    name: CI Pass
+    needs: [sdk-lint-test, twin-lint-test, dashboard-build-lint]
     runs-on: ubuntu-latest
+    if: always()
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "pnpm"
-          cache-dependency-path: dashboard/pnpm-lock.yaml
-
-      - name: Install deps
-        run: cd dashboard && pnpm install
-
-      - name: Lint
-        run: cd dashboard && pnpm lint
-
-      - name: Build
-        run: cd dashboard && pnpm build
-        env:
-          NEXT_PUBLIC_HELIUS_RPC_URL: ""
-          NEXT_PUBLIC_PROGRAM_ID: "11111111111111111111111111111111"
-          NEXT_PUBLIC_BRIDGE_WS_URL: "ws://localhost:8766"
+      - name: Verify all required jobs succeeded
+        run: |
+          results=(
+            "${{ needs.sdk-lint-test.result }}"
+            "${{ needs.twin-lint-test.result }}"
+            "${{ needs.dashboard-build-lint.result }}"
+          )
+          failed=false
+          for result in "${results[@]}"; do
+            if [[ "$result" != "success" ]]; then
+              failed=true
+              break
+            fi
+          done
+          if [ "$failed" = true ]; then
+            echo "One or more required CI jobs did not succeed."
+            echo "  sdk-lint-test:        ${{ needs.sdk-lint-test.result }}"
+            echo "  twin-lint-test:       ${{ needs.twin-lint-test.result }}"
+            echo "  dashboard-build-lint: ${{ needs.dashboard-build-lint.result }}"
+            exit 1
+          fi
+          echo "All required CI jobs passed."

@@ -73,11 +73,7 @@ export function InvoiceDownloader() {
             {" · "}
             <span style={{ color: "#14b8a6" }}>{meta.total_sol.toFixed(6)} SOL</span>
           </span>
-        ) : (
-          <span className="text-[11px]" style={{ color: "#4b5563" }}>
-            No invoice yet
-          </span>
-        )}
+        ) : null}
         {error && <span className="text-[10px]" style={{ color: "#ef4444" }}>{error}</span>}
       </div>
 

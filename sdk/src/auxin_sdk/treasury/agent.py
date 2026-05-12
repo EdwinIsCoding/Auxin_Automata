@@ -130,7 +130,7 @@ class TreasuryAgent:
         t0 = time.monotonic()
         message = await client.messages.create(
             model=self._model,
-            max_tokens=1024,
+            max_tokens=2048,
             system=self._system_prompt,
             messages=[{"role": "user", "content": context}],
         )
@@ -144,7 +144,17 @@ class TreasuryAgent:
             if raw_text.startswith("json"):
                 raw_text = raw_text[4:]
 
-        data = json.loads(raw_text)
+        # Attempt to recover from truncated responses by finding the last complete
+        # JSON object — the LLM occasionally gets cut off mid-string.
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            # Find the last closing brace and try to parse up to there
+            last_brace = raw_text.rfind("}")
+            if last_brace != -1:
+                data = json.loads(raw_text[: last_brace + 1])
+            else:
+                raise
         return self._parse_llm_response(data, balance, risk_score)
 
     def _parse_llm_response(

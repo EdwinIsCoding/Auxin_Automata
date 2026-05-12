@@ -1,5 +1,7 @@
 # Auxin Automata
 
+[![CI](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EdwinIsCoding/Auxin_Automata/actions/workflows/ci.yml)
+
 **Autonomous hardware wallets · M2M micropayments · Immutable compliance on Solana**
 
 Auxin Automata is a middleware stack that gives physical hardware its own Solana wallet. The hardware autonomously signs micropayments for AI inference and hashes kinematic safety telemetry to a tamper-proof on-chain compliance log — no human in the signing loop after `initialize_agent`. A built-in Financial Intelligence layer continuously scores machine health, runs a Claude-powered treasury agent to optimise burn rate and runway, and auto-generates PDF invoices for every billing period. The same SDK runs identically against a pure-Python mock, a PyBullet digital twin, and a live ROS2 robot arm, selected by a single environment variable with zero code changes. Built for the [Colosseum Frontier Hackathon](https://www.colosseum.org/) by Edwin Redhead and Tara Kasayapanand.
@@ -372,16 +374,14 @@ Grafana at `:3001` auto-provisions four panels: tx rate by kind/status, oracle l
 ## Tests
 
 ```bash
-# SDK — risk scorer, treasury agent, invoice generator + existing suite
-cd sdk && .venv/bin/python -m pytest          # 34 tests, 59% coverage
-
-cd twin && uv run python -m pytest            # 16 tests
+cd sdk && uv run pytest                       # 105 tests, 80.2% coverage (≥80% enforced in CI)
+cd twin && uv run pytest                      # 16 tests
 cd dashboard && pnpm lint && pnpm build       # 0 ESLint warnings, clean build
 cd programs && anchor test                    # 23 TypeScript tests
 make test                                     # all of the above
 ```
 
-CI (`.github/workflows/ci.yml`) runs all suites on every push to `main`.
+CI (`.github/workflows/ci.yml`) runs all suites on every push to `main` and on every pull request. A `ci-pass` gate job aggregates results for branch protection.
 
 ---
 

@@ -476,6 +476,14 @@ class Bridge:
 
         self._submission = _SubmissionLayer(program_client, rpc_url, helius_api_key)
 
+        # Rate-limit compliance logging: minimum gap between on-chain compliance events.
+        # data_demo has ~12% anomaly frames; without throttling the queue backs up
+        # into the hundreds and starves the WS telemetry broadcast.
+        self._compliance_min_interval_s: float = float(
+            os.getenv("AUXIN_COMPLIANCE_MIN_INTERVAL_S", "45")
+        )
+        self._last_compliance_logged_at: float = 0.0  # monotonic time
+
         # Two queues.  Compliance is unbounded per the architecture rule.
         self._compliance_queue: asyncio.Queue[_ComplianceTask] = asyncio.Queue()
         self._payment_queue: asyncio.Queue[_PaymentTask] = asyncio.Queue(
@@ -663,6 +671,18 @@ class Bridge:
             else:
                 severity = COMPLIANCE_SEVERITY_ANOMALY
                 reason_code = REASON_CODE_ANOMALY
+
+            # Rate-limit non-sentinel compliance logs: the recorded dataset has ~12%
+            # anomaly frames which would flood the on-chain queue.  Session sentinels
+            # (start/end markers) always pass through; regular anomalies are throttled.
+            now_mono = time.monotonic()
+            is_sentinel = reason_code in (REASON_CODE_REPLAY_START, REASON_CODE_REPLAY_END)
+            elapsed = now_mono - self._last_compliance_logged_at
+            if not is_sentinel and elapsed < self._compliance_min_interval_s:
+                return  # skip — too soon since last compliance log
+
+            if not is_sentinel:
+                self._last_compliance_logged_at = now_mono
 
             task = _ComplianceTask(
                 frame=frame,
@@ -1132,7 +1152,11 @@ class Bridge:
                     treasury_analysis=self._latest_treasury_analysis,
                 )
                 self._invoice_generator.render_json(invoice)
-                pdf_path = self._invoice_generator.render_pdf(invoice)
+                pdf_path = self._invoice_generator.render_pdf(
+                    invoice,
+                    risk_report=self._latest_risk_report,
+                    treasury_analysis=self._latest_treasury_analysis,
+                )
                 self._latest_invoice_path = pdf_path
 
                 await self.ws_broadcaster.broadcast(

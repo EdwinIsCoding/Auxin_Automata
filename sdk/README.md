@@ -25,7 +25,7 @@ No code outside `run_bridge.py` inspects which source is active. Switching is on
 ```
 sdk/
 ├── src/auxin_sdk/
-│   ├── bridge.py          Bridge + WebsocketBroadcaster + 5 Prometheus metrics
+│   ├── bridge.py          Bridge + WebsocketBroadcaster + HTTP server + 5 Prometheus metrics
 │   ├── oracle.py          SafetyOracle: Gemini 2.0 Flash + local torque/fixture fallback
 │   ├── schema.py          TelemetryFrame — Pydantic v2, single source of truth
 │   ├── hashing.py         canonical_json + sha256_hex (deterministic, on-chain ready)
@@ -35,21 +35,43 @@ sdk/
 │   ├── sources/
 │   │   ├── base.py        TelemetrySource ABC — the agnosticism contract
 │   │   └── mock.py        MockSource (sine/cosine kinematics) + ReplaySource
+│   ├── privacy/
+│   │   ├── base.py        PaymentProvider ABC
+│   │   ├── direct.py      DirectProvider — public SOL transfer
+│   │   ├── cloak.py       CloakProvider — ZK shield pool (cloak.ag)
+│   │   ├── magicblock.py  MagicBlockProvider — TEE rollup + AML screening
+│   │   └── umbra.py       UmbraProvider — Merkle pool + ZK proofs
+│   ├── risk/
+│   │   ├── scorer.py      Deterministic risk scorer → RiskReport (grade A–F, 7-day trend)
+│   │   └── types.py       RiskReport, RiskDimension
+│   ├── treasury/
+│   │   ├── agent.py       Claude-powered TreasuryAgent + heuristic fallback
+│   │   └── types.py       TreasuryAnalysis, auto-execution safety filter
+│   ├── invoicing/
+│   │   ├── generator.py   InvoiceGenerator — weasyprint PDF → pdfkit → HTML fallback
+│   │   └── types.py       Invoice, InvoiceLine types
 │   └── program/
 │       ├── client.py      AuxinProgramClient — hand-crafted Anchor instruction builders
 │       └── idl.json       Bundled IDL (fallback if programs/ not built)
 ├── scripts/
 │   └── run_bridge.py      Production bridge entrypoint; Sentry init; source factory
 ├── tests/
-│   ├── test_bridge_e2e.py  13 tests covering full anomaly + payment pipeline
-│   ├── test_oracle.py      21 tests covering Gemini + fallback paths
-│   ├── test_mock_source.py 30 tests: kinematics, seeding, recording, replay
-│   ├── test_hashing.py     14 tests: determinism, canonicalisation
-│   ├── test_schema.py      11 tests: field validation, round-trip
-│   ├── test_wallet.py       9 tests: load, create, sign
-│   ├── test_logging.py      7 tests: structlog configuration
-│   └── eval_oracle.py      Accuracy eval harness (nightly, costs API credits)
-└── fixtures/images/        20 labelled workspace images (clear_*.jpg / obstacle_*.jpg)
+│   ├── test_bridge_e2e.py       13 tests: full anomaly + payment pipeline
+│   ├── test_oracle.py           21 tests: Gemini + fallback paths
+│   ├── test_risk_scorer.py       Risk scoring, grading, 7-day trend
+│   ├── test_treasury_agent.py    Treasury AI analysis + heuristic fallback
+│   ├── test_invoice_generator.py Invoice PDF generation + HTML fallback
+│   ├── test_mock_source.py      30 tests: kinematics, seeding, recording, replay
+│   ├── test_privacy.py           Privacy provider interface + routing
+│   ├── test_cloak_provider.py    Cloak ZK shield pool
+│   ├── test_magicblock_provider.py MagicBlock API + AML screening
+│   ├── test_umbra_provider.py    Umbra Merkle pool + ZK proofs
+│   ├── test_hashing.py          14 tests: determinism, canonicalisation
+│   ├── test_schema.py           11 tests: field validation, round-trip
+│   ├── test_wallet.py            9 tests: load, create, sign
+│   ├── test_logging.py           7 tests: structlog configuration
+│   └── eval_oracle.py           Accuracy eval harness (nightly, costs API credits)
+└── fixtures/images/             20 labelled workspace images (clear_*.jpg / obstacle_*.jpg)
 ```
 
 ---
@@ -84,7 +106,7 @@ uv run python -m pytest -m network tests/test_bridge_e2e.py -v
 GEMINI_API_KEY=... uv run python -m pytest tests/eval_oracle.py -v
 ```
 
-Current status: **105/105 unit tests pass · 80.2% coverage (≥80% enforced in CI)**.
+Current status: **105/105 unit tests pass · 80.2% coverage (≥80% enforced in CI)**. Network tests are excluded by default (`-m 'not network'`) — add `-m network` to run Devnet E2E tests.
 
 ---
 

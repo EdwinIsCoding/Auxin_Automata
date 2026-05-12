@@ -251,8 +251,8 @@ export function VideoReplay() {
               pointerEvents: "none",
             }}
           >
-            <div className="flex flex-wrap gap-1 mb-1">
-              {sceneDescription.objects.map((obj, i) => (
+            <div className="flex flex-wrap gap-1 mb-1 overflow-hidden" style={{ maxHeight: "2.2em" }}>
+              {sceneDescription.objects.slice(0, 6).map((obj, i) => (
                 <span
                   key={i}
                   className="px-1.5 py-0.5 rounded text-[10px] font-mono"
@@ -266,7 +266,7 @@ export function VideoReplay() {
                 </span>
               ))}
             </div>
-            <p className="text-[10px] leading-tight" style={{ color: "#9ca3af" }}>
+            <p className="text-[10px] leading-tight line-clamp-1" style={{ color: "#9ca3af" }}>
               {sceneDescription.scene_summary}
             </p>
           </div>

@@ -1,0 +1,246 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1.8cm]{geometry}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage{hyperref}
+\usepackage{calc}
+\usepackage{multirow}
+\usepackage{colortbl}
+\usepackage{longtable}
+
+\pagenumbering{gobble}
+
+% ── Colors ──
+\definecolor{brand}{HTML}{1a4d3a}
+\definecolor{teal}{HTML}{14b8a6}
+\definecolor{bg}{HTML}{f8faf9}
+\definecolor{ink}{HTML}{1a1a1a}
+\definecolor{muted}{HTML}{6b7280}
+\definecolor{lightgray}{HTML}{e5e7eb}
+\definecolor{verylightgray}{HTML}{f3f4f6}
+\definecolor{sev0}{HTML}{22c55e}
+\definecolor{sev1}{HTML}{3b82f6}
+\definecolor{sev2}{HTML}{f59e0b}
+\definecolor{sev3}{HTML}{ef4444}
+\definecolor{rowalt}{HTML}{f9fafb}
+
+\hypersetup{colorlinks=true, urlcolor=teal, linkcolor=ink}
+
+% ── Header/Footer ──
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\footrule}{\hbox to\headwidth{\color{lightgray}\leaders\hrule height \footrulewidth\hfill}\vskip 4pt}
+\fancyfoot[L]{\small\color{muted}Generated automatically by Auxin Automata --- auxin-sdk v1.0}
+\fancyfoot[R]{\small\color{muted}Page \thepage}
+
+% ── Custom commands ──
+\newcommand{\invoicelabel}[1]{\textcolor{muted}{\small\textsf{#1}}}
+\newcommand{\invoicevalue}[1]{\textsf{#1}}
+\newcommand{\sectionrule}{\noindent{\color{lightgray}\rule{\linewidth}{0.5pt}}\vspace{0.4em}}
+
+\begin{document}
+
+% ═══════════════════════════════════════════════
+% HEADER BLOCK
+% ═══════════════════════════════════════════════
+
+\begin{minipage}[t]{0.55\linewidth}
+    {\fontsize{22}{26}\selectfont\bfseries\sffamily\textcolor{brand}{Auxin Automata}}\\[0.2em]
+    {\small\sffamily\textcolor{teal}{Agentic Infrastructure for Autonomous Hardware}}\\[1.5em]
+    {\Large\bfseries\sffamily Compute Invoice}
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.38\linewidth}
+    \raggedleft
+    \invoicelabel{Invoice ID}\\
+    \invoicevalue{\texttt{ {{- invoice_id -}} }}\\[0.6em]
+    \invoicelabel{Generated}\\
+    \invoicevalue{ {{- generated_at -}} }\\[0.6em]
+    \invoicelabel{Period}\\
+    \invoicevalue{ {{- period_start -}} -- {{- period_end -}} }\\[0.6em]
+    \invoicelabel{Cluster}\\
+    \invoicevalue{Solana Mainnet}
+\end{minipage}
+
+\vspace{1.5em}
+\sectionrule
+
+% ═══════════════════════════════════════════════
+% PARTIES
+% ═══════════════════════════════════════════════
+
+\begin{minipage}[t]{0.48\linewidth}
+    \invoicelabel{HARDWARE AGENT}\\[0.3em]
+    \invoicevalue{\textbf{ {{- agent_name -}} }}\\
+    \invoicevalue{ {{- agent_facility -}} }\\
+    \invoicevalue{ {{- agent_location -}} }\\[0.5em]
+    \invoicelabel{Agent Wallet}\\
+    \texttt{\small {{- agent_wallet_short -}} }\\[0.3em]
+    \invoicelabel{Program}\\
+    \texttt{\small {{- program_id_short -}} } {\scriptsize\textcolor{teal}{(mainnet)}}
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.48\linewidth}
+    \raggedleft
+    \invoicelabel{FACILITY OPERATOR}\\[0.3em]
+    \invoicevalue{\textbf{ {{- operator_name -}} }}\\
+    \invoicevalue{ {{- operator_address_line1 -}} }\\
+    \invoicevalue{ {{- operator_address_line2 -}} }\\[0.5em]
+    \invoicelabel{Contact}\\
+    \invoicevalue{ {{- operator_contact -}} }\\
+    \invoicevalue{ {{- operator_email -}} }\\
+    \invoicevalue{ {{- operator_phone -}} }
+\end{minipage}
+
+\vspace{1.5em}
+\sectionrule
+
+% ═══════════════════════════════════════════════
+% SUMMARY METRICS
+% ═══════════════════════════════════════════════
+
+\vspace{0.3em}
+\noindent
+\begin{tabularx}{\linewidth}{|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
+    \arrayrulecolor{lightgray}\hline
+    \rowcolor{verylightgray}
+    \invoicelabel{Total Transactions} & \invoicelabel{Total SOL Spent} & \invoicelabel{Compliance Events} & \invoicelabel{Wallet Balance} & \invoicelabel{Risk Score} \\
+    \hline
+    \textbf{\textsf{\large {{- total_transactions -}} }} & \textbf{\textsf{\large {{- total_sol -}} }} & \textbf{\textsf{\large {{- total_compliance_events -}} }} & \textbf{\textsf{\large {{- wallet_balance -}} }} & \textbf{\textsf{\large {{- risk_score_display -}} }} \\
+    \hline
+\end{tabularx}
+
+\vspace{1.5em}
+
+% ═══════════════════════════════════════════════
+% PAYMENT LINE ITEMS — BY PROVIDER
+% ═══════════════════════════════════════════════
+
+\noindent{\large\bfseries\sffamily\textcolor{brand}{Compute Payments by Provider}}
+\vspace{0.5em}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}X r r r l@{}}
+    \arrayrulecolor{lightgray}
+    \toprule
+    \textbf{\textsf{Provider}} & \textbf{\textsf{Transactions}} & \textbf{\textsf{Lamports}} & \textbf{\textsf{SOL}} & \textbf{\textsf{Wallet}} \\
+    \midrule
+    {% for row in provider_rows %}
+    {% if loop.index is odd %}
+    {{- row.description -}} & {{- row.count | format_int -}} & {{- row.lamports | format_int -}} & {{- row.sol -}} & \texttt{\scriptsize {{- row.wallet_short -}} } \\
+    {% else %}
+    \rowcolor{rowalt}
+    {{- row.description -}} & {{- row.count | format_int -}} & {{- row.lamports | format_int -}} & {{- row.sol -}} & \texttt{\scriptsize {{- row.wallet_short -}} } \\
+    {% endif %}
+    {% endfor %}
+    \midrule
+    \rowcolor{verylightgray}
+    \textbf{\textsf{Total}} & \textbf{\textsf{ {{- total_transactions | format_int -}} }} & \textbf{\textsf{ {{- total_lamports | format_int -}} }} & \textbf{\textsf{ {{- total_sol -}} }} & \\
+    \bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+{\small\color{muted}\textsf{All payments executed via \texttt{stream\_compute\_payment} instruction, capped at 0.001 SOL per transaction, rate-limited to 100 tx / 60 slots.}}
+
+\vspace{1.5em}
+
+\newpage
+
+% ═══════════════════════════════════════════════
+% COMPLIANCE EVENT LOG
+% ═══════════════════════════════════════════════
+
+\noindent{\large\bfseries\sffamily\textcolor{brand}{Compliance Event Log}}
+\vspace{0.5em}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}l c c >{\raggedright\arraybackslash}X l@{}}
+    \arrayrulecolor{lightgray}
+    \toprule
+    \textbf{\textsf{Timestamp}} & \textbf{\textsf{Sev.}} & \textbf{\textsf{Code}} & \textbf{\textsf{Description}} & \textbf{\textsf{Hash (trunc.)}} \\
+    \midrule
+    {% for ev in compliance_rows %}
+    {% if loop.index is odd %}
+    {{- ev.ts -}} & \textcolor{ {{- ev.sev_color -}} }{\textbf{ {{- ev.severity -}} }} & {{- ev.code -}} & {{- ev.description -}} & \texttt{\scriptsize {{- ev.hash_short -}} } \\
+    {% else %}
+    \rowcolor{rowalt}
+    {{- ev.ts -}} & \textcolor{ {{- ev.sev_color -}} }{\textbf{ {{- ev.severity -}} }} & {{- ev.code -}} & {{- ev.description -}} & \texttt{\scriptsize {{- ev.hash_short -}} } \\
+    {% endif %}
+    {% endfor %}
+    {% if not compliance_rows %}
+    \multicolumn{5}{c}{\textcolor{muted}{\textsf{No compliance events recorded this period.}}} \\
+    {% endif %}
+    \bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+\noindent{\small\color{muted}\textsf{Severity: \textcolor{sev0}{\textbf{0}} Normal \quad \textcolor{sev1}{\textbf{1}} Advisory \quad \textcolor{sev2}{\textbf{2}} Warning (auto-halt) \quad \textcolor{sev3}{\textbf{3}} Critical (requires investigation)}}
+
+\vspace{0.3em}
+\noindent{\small\color{muted}\textsf{Each hash is the SHA-256 of the full kinematic telemetry frame at the moment of the event. Raw telemetry is available on request. On-chain verification: each event is stored in a ComplianceLog PDA keyed by agent pubkey and slot number.}}
+
+\vspace{1.5em}
+
+% ═══════════════════════════════════════════════
+% AI TREASURY ANALYSIS
+% ═══════════════════════════════════════════════
+
+\noindent{\large\bfseries\sffamily\textcolor{brand}{AI Treasury Analysis (End of Period)}}
+\vspace{0.5em}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+    \arrayrulecolor{lightgray}
+    \invoicelabel{Burn rate} & {{- burn_rate -}} \\
+    \invoicelabel{Runway} & {{- runway -}} \\
+    \invoicelabel{Runway status} & \textcolor{ {{- runway_color -}} }{\textbf{ {{- runway_status -}} }} \\
+    \invoicelabel{Budget allocation} & Inference: {{- budget_inference -}}\% \quad Reserve: {{- budget_reserve -}}\% \quad Buffer: {{- budget_buffer -}}\% \\
+    \invoicelabel{Recommended actions} & {{- recommended_actions -}} \\
+    \invoicelabel{Risk score} & {{- risk_detail -}} \\
+    \invoicelabel{Trend} & {{- risk_trend -}} \\
+\end{tabularx}
+
+\vspace{1.5em}
+
+\newpage
+
+% ═══════════════════════════════════════════════
+% PRIVACY DISCLOSURE
+% ═══════════════════════════════════════════════
+
+\noindent{\large\bfseries\sffamily\textcolor{brand}{Privacy Configuration}}
+\vspace{0.5em}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+    \arrayrulecolor{lightgray}
+    \invoicelabel{Payment privacy} & Cloak (stealth addresses) --- payment recipients and amounts are not publicly linkable to the hardware agent wallet. \\
+    \invoicelabel{Compliance privacy} & None (public by design) --- compliance hashes are written to public Solana PDAs as immutable audit evidence. \\
+    \invoicelabel{Viewing key} & Available on request to authorised auditors. Contact the Auxin operator for disclosure. \\
+\end{tabularx}
+
+\vspace{2em}
+\sectionrule
+
+% ═══════════════════════════════════════════════
+% LEGAL FOOTER
+% ═══════════════════════════════════════════════
+
+\begin{center}
+    {\small\color{muted}\textsf{This invoice was generated automatically by \textbf{auxin-sdk v1.0} from on-chain transaction data.}}\\[0.2em]
+    {\small\color{muted}\textsf{All payment and compliance records are independently verifiable on Solana Explorer.}}\\[0.2em]
+    {\small\color{muted}\textsf{Compliance hashes supplement existing facility audit systems and do not constitute legal evidence without independent counsel review.}}\\[0.8em]
+    {\small\color{muted}\textsf{Auxin Automata \quad\textbullet\quad auxin-sdk v1.0 \quad\textbullet\quad Apache 2.0 \quad\textbullet\quad github.com/EdwinIsCoding/Auxin\_Automata}}
+\end{center}
+
+\end{document}
