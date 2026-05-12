@@ -500,3 +500,63 @@ async def test_oracle_retries_on_transient_error(tmp_path: Path) -> None:
     assert call_count == 2
     assert decision.action_approved is True
     assert decision.used_fallback is False
+
+
+# ── describe_scene timeout (line 267) ────────────────────────────────────────
+
+
+async def test_describe_scene_timeout(tmp_path):
+    """Line 267: describe_scene times out and returns fallback."""
+    oracle = SafetyOracle(api_key="fake-key", timeout_s=0.001)
+    image_path = tmp_path / "test.jpg"
+    image_path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+    import asyncio as _asyncio
+
+    async def _slow_generate(*args, **kwargs):
+        await _asyncio.sleep(10)
+
+    mock_client = MagicMock()
+    mock_client.aio.models.generate_content = _slow_generate
+    oracle._genai_model = mock_client
+    oracle._scene_prompt_text = "Describe the scene"
+
+    result = await oracle.describe_scene(image_path)
+    assert result.used_fallback is True
+    assert result.confidence == 0.0
+
+
+# ── _check_with_retry RetryError (line 333) ──────────────────────────────────
+
+
+async def test_check_with_retry_all_retries_exhausted(tmp_path):
+    """Line 333: RetryError is caught and re-raised."""
+    oracle = SafetyOracle(api_key="fake-key")
+    image_path = tmp_path / "test.jpg"
+    image_path.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+    mock_client = MagicMock()
+    mock_client.aio.models.generate_content = AsyncMock(
+        side_effect=RuntimeError("API always fails")
+    )
+    oracle._genai_model = mock_client
+
+    frame = _make_frame()
+    with pytest.raises(RuntimeError):
+        await oracle._check_with_retry(mock_client, frame, image_path)
+
+
+# ── Local fallback: unreadable labels.json (lines 439-440) ───────────────────
+
+
+async def test_local_fallback_unreadable_labels_json(tmp_path):
+    """Lines 439-440: labels.json exists but is invalid JSON — silently skipped."""
+    oracle = SafetyOracle(api_key=None)
+    image_path = tmp_path / "test.jpg"
+    image_path.write_bytes(b"\xff\xd8")
+    (tmp_path / "labels.json").write_text("NOT VALID JSON {{{")
+
+    frame = _make_frame()
+    result = await oracle.check(frame, image_path)
+    # Should not crash — just skip the label check
+    assert isinstance(result, OracleDecision)

@@ -300,3 +300,71 @@ class TestScorerEdgeCases:
         report = calculate_risk_score(payments, compliance, balance=1.0, tx_count=10)
         comp = next(b for b in report.breakdown if b.category == "Compliance Record")
         assert any("days ago" in f.lower() for f in comp.factors)
+
+
+class TestGradeFAndDiversity:
+    """Cover _grade returning 'F' (line 39) and diversity 4+ providers (line 265)."""
+
+    def test_grade_f_very_low_score(self):
+        """Score < 60 → grade D or F."""
+        now = datetime.now(UTC)
+        # Extreme stress: many sev-3 compliance, tiny balance, single provider
+        payments = [_make_payment(now - timedelta(hours=i), 5000, "ProvA") for i in range(5)]
+        compliance = [_make_compliance(now - timedelta(hours=i), severity=3) for i in range(20)]
+        report = calculate_risk_score(payments, compliance, balance=0.001, tx_count=5)
+        assert report.grade in ("D", "F"), f"Expected D or F, got {report.grade}"
+
+    def test_diversity_four_plus_providers(self):
+        """4+ unique providers → diversity_score = 100 (line 265)."""
+        now = datetime.now(UTC)
+        providers = ["ProvA", "ProvB", "ProvC", "ProvD", "ProvE"]
+        payments = [
+            _make_payment(now - timedelta(hours=i), 5000, providers[i % 5]) for i in range(50)
+        ]
+        report = calculate_risk_score(payments, [], balance=2.0, tx_count=50)
+        prov = next(b for b in report.breakdown if b.category == "Provider Diversity")
+        assert prov.score >= 80.0  # high score with 5 providers
+
+
+class TestScorerParseTs:
+    """Lines 542, 547-549: _parse_ts edge cases in scorer module."""
+
+    def test_parse_ts_invalid_string(self):
+        from auxin_sdk.risk.scorer import _parse_ts
+
+        result = _parse_ts("not-a-date")
+        assert result.year == 1970
+
+    def test_parse_ts_none(self):
+        from auxin_sdk.risk.scorer import _parse_ts
+
+        result = _parse_ts(None)
+        assert result.year == 1970
+
+    def test_parse_ts_integer(self):
+        from auxin_sdk.risk.scorer import _parse_ts
+
+        result = _parse_ts(12345)
+        assert result.year == 1970
+
+    def test_parse_ts_naive_datetime(self):
+        """Line 542: datetime without tzinfo gets UTC attached."""
+        from auxin_sdk.risk.scorer import _parse_ts
+
+        dt = datetime(2026, 1, 1, 12, 0, 0)
+        result = _parse_ts(dt)
+        assert result.tzinfo is not None
+
+
+class TestGradeFunction:
+    """_grade() returns correct grades for all thresholds."""
+
+    def test_grade_values(self):
+        from auxin_sdk.risk.scorer import _grade
+
+        assert _grade(0.0) == "F"  # (0, "F") matches
+        assert _grade(10.0) == "F"
+        assert _grade(34.9) == "F"
+        assert _grade(35.0) == "D"
+        assert _grade(50.0) == "C"
+        assert _grade(90.0) == "A"

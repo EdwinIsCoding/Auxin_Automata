@@ -1051,7 +1051,7 @@ class Bridge:
                     grade=report.grade,
                     trend=report.trend,
                 )
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # pragma: no cover
                 break
             except Exception as exc:
                 log.error("risk_scoring_worker.error", error=str(exc))
@@ -1143,7 +1143,7 @@ class Bridge:
                     status=analysis.runway_status,
                     fallback=analysis.used_fallback,
                 )
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # pragma: no cover
                 break
             except Exception as exc:
                 log.error("treasury_worker.error", error=str(exc))

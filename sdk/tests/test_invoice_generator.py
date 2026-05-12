@@ -212,3 +212,239 @@ class TestPdfExport:
             assert result is not None
             assert result.exists()
             assert result.stat().st_size > 0
+
+
+class TestRenderLatex:
+    """Cover _render_latex internal paths (lines 313-407)."""
+
+    @pytest.mark.asyncio
+    async def test_render_latex_with_risk_and_treasury(self):
+        """Lines 313-404: _render_latex with risk_report and treasury_analysis."""
+        from auxin_sdk.risk.types import RiskBreakdown, RiskReport
+        from auxin_sdk.treasury.types import (
+            BudgetAllocation,
+            RecommendedAction,
+            TreasuryAnalysis,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(5),
+                _make_compliance(2),
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "AgentPub123",
+            )
+
+            risk = RiskReport(
+                overall_score=72.0,
+                grade="B",
+                breakdown=[
+                    RiskBreakdown(category="financial", score=80.0, weight=0.4, factors=["ok"]),
+                    RiskBreakdown(category="operational", score=65.0, weight=0.3, factors=["ok"]),
+                ],
+                trend="improving",
+                trend_data=[],
+                computed_at=now,
+            )
+
+            treasury = TreasuryAnalysis(
+                burn_rate_lamports_per_hour=2000,
+                runway_hours=48.5,
+                runway_status="warning",
+                budget_allocation=BudgetAllocation(inference=65.0, reserve=25.0, buffer=10.0),
+                recommended_actions=[
+                    RecommendedAction(
+                        action="throttle_inference",
+                        priority="high",
+                        reasoning="Burn rate elevated",
+                        auto_executable=True,
+                    )
+                ],
+                anomaly_flags=[],
+                summary="Burn rate elevated",
+                analyzed_at=now,
+                used_fallback=False,
+            )
+
+            tex = gen._render_latex(invoice, risk, treasury, 1.5)
+            assert "AUX-" in tex
+            assert "AgentPub" in tex
+            assert "72/100" in tex or "72" in tex
+
+    @pytest.mark.asyncio
+    async def test_render_latex_no_risk_no_treasury(self):
+        """Lines 387-410: _render_latex without risk/treasury."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(3),
+                [],
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
+            tex = gen._render_latex(invoice, None, None, None)
+            assert "N/A" in tex
+
+    @pytest.mark.asyncio
+    async def test_render_latex_risk_score_no_report(self):
+        """Lines 406-407: risk_score present but no risk_report object."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(2),
+                [],
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
+            invoice.risk_score_at_generation = 65.0
+            tex = gen._render_latex(invoice, None, None, None)
+            assert "65/100" in tex
+
+    @pytest.mark.asyncio
+    async def test_render_latex_treasury_short_runway(self):
+        """Line 373: treasury with runway < 24h shows hours."""
+        from auxin_sdk.treasury.types import BudgetAllocation, TreasuryAnalysis
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(2),
+                [],
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
+            treasury = TreasuryAnalysis(
+                burn_rate_lamports_per_hour=50000,
+                runway_hours=8.5,
+                runway_status="critical",
+                budget_allocation=BudgetAllocation(inference=60, reserve=30, buffer=10),
+                recommended_actions=[],
+                anomaly_flags=[],
+                summary="Low runway",
+                analyzed_at=now,
+                used_fallback=False,
+            )
+            tex = gen._render_latex(invoice, None, treasury, None)
+            assert "8.5 hours" in tex
+
+
+class TestCompileLatex:
+    """Lines 484-487: _compile_latex checks compiled PDF exists."""
+
+    def test_compile_latex_missing_pdf_raises(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            # Fake pdflatex that creates no PDF
+            with (
+                patch("subprocess.run") as mock_run,
+            ):
+                from unittest.mock import MagicMock as _MagicMock
+
+                mock_run.return_value = _MagicMock(returncode=0, stdout="", stderr="")
+                from pathlib import Path
+
+                with pytest.raises(RuntimeError, match="did not produce"):
+                    gen._compile_latex(
+                        "\\documentclass{article}\\begin{document}hi\\end{document}",
+                        Path(tmpdir) / "out.pdf",
+                        "test",
+                    )
+
+
+class TestMinimalHtml:
+    """Lines 533-540: _minimal_html fallback."""
+
+    @pytest.mark.asyncio
+    async def test_minimal_html_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(2),
+                [],
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
+            html = gen._minimal_html(invoice)
+            assert "Compute Invoice" in html
+            assert "pub" in html
+
+
+class TestRenderHtmlJinja2Missing:
+    """Lines 505-507: _render_html when jinja2 is not importable."""
+
+    @pytest.mark.asyncio
+    async def test_render_html_without_jinja2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen = InvoiceGenerator(output_dir=tmpdir)
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(2),
+                [],
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
+            with patch.dict("sys.modules", {"jinja2": None}):
+                html = gen._render_html(invoice)
+            assert "Compute Invoice" in html
+
+
+class TestScoreToGrade:
+    """Lines 554-564: _score_to_grade helper."""
+
+    def test_grades(self):
+        from auxin_sdk.invoicing.generator import _score_to_grade
+
+        assert _score_to_grade(95) == "A+"
+        assert _score_to_grade(85) == "A"
+        assert _score_to_grade(75) == "B"
+        assert _score_to_grade(65) == "C"
+        assert _score_to_grade(55) == "D"
+        assert _score_to_grade(45) == "F"
+
+
+class TestRunwayColor:
+    """Line 102: _runway_color helper."""
+
+    def test_runway_colors(self):
+        from auxin_sdk.invoicing.generator import _runway_color
+
+        assert _runway_color("healthy") == "sev0"
+        assert _runway_color("warning") == "sev2"
+        assert _runway_color("critical") == "sev3"
+        assert _runway_color("unknown") == "sev1"
+
+
+class TestGeneratorParseTs:
+    """Lines 570, 575-577: _parse_ts in generator module."""
+
+    def test_parse_ts_invalid_string(self):
+        from auxin_sdk.invoicing.generator import _parse_ts
+
+        result = _parse_ts("not-a-date")
+        assert result.year == 1970
+
+    def test_parse_ts_none(self):
+        from auxin_sdk.invoicing.generator import _parse_ts
+
+        result = _parse_ts(None)
+        assert result.year == 1970
+
+    def test_parse_ts_naive_datetime(self):
+        from auxin_sdk.invoicing.generator import _parse_ts
+
+        dt = datetime(2026, 6, 15, 12, 0, 0)  # no tzinfo
+        result = _parse_ts(dt)
+        assert result.tzinfo is not None
+        assert result.year == 2026

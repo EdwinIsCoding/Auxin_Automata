@@ -25,7 +25,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 # Top-level import so tests can patch auxin_sdk.treasury.agent.anthropic
 try:
     import anthropic  # type: ignore[import]
-except ImportError:
+except ImportError:  # pragma: no cover – anthropic always installed in dev
     anthropic = None  # type: ignore[assignment]
 
 from ..risk.types import RiskReport

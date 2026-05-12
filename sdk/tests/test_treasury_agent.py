@@ -287,3 +287,25 @@ class TestCallLlmRecovery:
             result = await agent._call_llm("context", 1.0, 75.0)
 
         assert isinstance(result, TreasuryAnalysis)
+
+
+class TestCallLlmNoBrace:
+    """Line 157: truncated JSON without any closing brace re-raises."""
+
+    async def test_no_brace_reraises(self):
+        agent = TreasuryAgent(api_key="fake-key")
+
+        mock_message = MagicMock()
+        mock_content = MagicMock()
+        mock_content.text = "this is not json at all"
+        mock_message.content = [mock_content]
+
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_message)
+
+        with (
+            patch("auxin_sdk.treasury.agent.anthropic") as mock_anthropic,
+            pytest.raises(json.JSONDecodeError),
+        ):
+            mock_anthropic.AsyncAnthropic.return_value = mock_client
+            await agent._call_llm("context", 1.0, 75.0)

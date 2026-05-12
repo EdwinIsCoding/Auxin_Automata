@@ -419,3 +419,276 @@ def test_close_releases_video_capture(tmp_path: Path) -> None:
     asyncio.get_event_loop().run_until_complete(src.close())
     assert src._cap is None
     assert src._closed
+
+
+# ── get_frame_at with mocked cv2 (lines 284-313) ─────────────────────────────
+
+
+def test_get_frame_at_with_mock_cv2(tmp_path):
+    """Lines 284-313: get_frame_at reads video frame via cv2."""
+    episode = _make_episode_dir(tmp_path)
+    camera_dir = episode / "cameras" / "wrist"
+    camera_dir.mkdir(parents=True)
+    # Create frames.jsonl
+    (camera_dir / "frames.jsonl").write_text(
+        json.dumps({"host_timestamp_ns": 0, "rgb_video_frame": 0})
+        + "\n"
+        + json.dumps({"host_timestamp_ns": 100_000_000, "rgb_video_frame": 1})
+        + "\n"
+    )
+    # Create fake rgb.mp4
+    (camera_dir / "rgb.mp4").write_bytes(b"fake-video-data")
+
+    src = RecordedSource(episode, camera_key="wrist")
+
+    # Mock cv2
+    from unittest.mock import MagicMock, patch
+
+    import numpy as np
+
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = True
+    mock_cap.read.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8))
+    mock_cap.set.return_value = True
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.return_value = mock_cap
+    mock_cv2.cvtColor.return_value = np.zeros((480, 640, 3), dtype=np.uint8)
+    mock_cv2.COLOR_BGR2RGB = 4
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        result = src.get_frame_at(0)
+
+    assert result is not None
+    assert result.shape == (480, 640, 3)
+
+
+def test_get_frame_at_video_not_found(tmp_path):
+    """Line 285-286: get_frame_at returns None when video path doesn't exist."""
+    episode = _make_episode_dir(tmp_path)
+    camera_dir = episode / "cameras" / "wrist"
+    camera_dir.mkdir(parents=True)
+    (camera_dir / "frames.jsonl").write_text(
+        json.dumps({"host_timestamp_ns": 0, "rgb_video_frame": 0}) + "\n"
+    )
+    # No rgb.mp4 file
+
+    src = RecordedSource(episode, camera_key="wrist")
+    result = src.get_frame_at(0)
+    assert result is None
+
+
+def test_get_frame_at_out_of_range(tmp_path):
+    """Line 281: get_frame_at returns None for out-of-range index."""
+    episode = _make_episode_dir(tmp_path)
+    src = RecordedSource(episode)
+    result = src.get_frame_at(9999)
+    assert result is None
+
+
+def test_get_frame_at_read_fails(tmp_path):
+    """Lines 310-313: get_frame_at returns None when cap.read fails."""
+    episode = _make_episode_dir(tmp_path)
+    camera_dir = episode / "cameras" / "wrist"
+    camera_dir.mkdir(parents=True)
+    (camera_dir / "frames.jsonl").write_text(
+        json.dumps({"host_timestamp_ns": 0, "rgb_video_frame": 0}) + "\n"
+    )
+    (camera_dir / "rgb.mp4").write_bytes(b"fake")
+
+    src = RecordedSource(episode, camera_key="wrist")
+
+    from unittest.mock import MagicMock, patch
+
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = True
+    mock_cap.read.return_value = (False, None)  # read fails
+    mock_cap.set.return_value = True
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.return_value = mock_cap
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        result = src.get_frame_at(0)
+
+    assert result is None
+
+
+# ── get_available_cameras with cameras (line 320) ─────────────────────────────
+
+
+def test_get_available_cameras_with_cameras(tmp_path):
+    """Line 320: get_available_cameras returns cameras with rgb.mp4."""
+    episode = _make_episode_dir(tmp_path)
+    for cam in ["wrist", "overhead"]:
+        d = episode / "cameras" / cam
+        d.mkdir(parents=True)
+        (d / "rgb.mp4").write_bytes(b"fake")
+    # Camera without rgb.mp4 should NOT be listed
+    (episode / "cameras" / "empty_cam").mkdir(parents=True)
+
+    src = RecordedSource(episode)
+    cameras = src.get_available_cameras()
+    assert "wrist" in cameras
+    assert "overhead" in cameras
+    assert "empty_cam" not in cameras
+
+
+# ── _ensure_cap (lines 396-428) ──────────────────────────────────────────────
+
+
+def test_ensure_cap_cv2_import_error(tmp_path):
+    """Lines 421-425: _ensure_cap handles ImportError for cv2."""
+    episode = _make_episode_dir(tmp_path)
+    src = RecordedSource(episode)
+
+    from pathlib import Path
+    from unittest.mock import patch
+
+    with patch("builtins.__import__", side_effect=ImportError("no cv2")):
+        src._ensure_cap(Path("/fake/video.mp4"))
+
+    assert src._cap is None
+
+
+def test_ensure_cap_video_open_fails(tmp_path):
+    """Lines 407-409: _ensure_cap when VideoCapture fails to open."""
+    episode = _make_episode_dir(tmp_path)
+    src = RecordedSource(episode)
+
+    from unittest.mock import MagicMock, patch
+
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = False  # fails to open
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.return_value = mock_cap
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        src._ensure_cap(tmp_path / "nonexistent.mp4")
+
+    assert src._cap is None
+
+
+def test_ensure_cap_success_with_thread_count(tmp_path):
+    """Lines 410-420: _ensure_cap sets thread count when available."""
+    episode = _make_episode_dir(tmp_path)
+    src = RecordedSource(episode)
+
+    from unittest.mock import MagicMock, patch
+
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = True
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.return_value = mock_cap
+    mock_cv2.CAP_PROP_THREAD_COUNT = 99
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        src._ensure_cap(tmp_path / "video.mp4")
+
+    assert src._cap is mock_cap
+    mock_cap.set.assert_called_with(99, 1)
+
+
+def test_ensure_cap_releases_old_cap(tmp_path):
+    """Lines 398-401: _ensure_cap releases existing cap when camera key changes."""
+    episode = _make_episode_dir(tmp_path)
+    src = RecordedSource(episode)
+
+    from unittest.mock import MagicMock, patch
+
+    old_cap = MagicMock()
+    src._cap = old_cap
+    src._cap_camera_key = "old_camera"  # different from current
+
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = True
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.return_value = mock_cap
+    mock_cv2.CAP_PROP_THREAD_COUNT = None  # no thread count property
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        src._ensure_cap(tmp_path / "video.mp4")
+
+    old_cap.release.assert_called_once()
+    assert src._cap is mock_cap
+
+
+def test_ensure_cap_exception_handling(tmp_path):
+    """Lines 426-428: _ensure_cap handles generic exceptions."""
+    episode = _make_episode_dir(tmp_path)
+    src = RecordedSource(episode)
+
+    from unittest.mock import MagicMock, patch
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.side_effect = OSError("GPU error")
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        src._ensure_cap(tmp_path / "video.mp4")
+
+    assert src._cap is None
+
+
+def test_ensure_cap_early_return_same_camera(tmp_path):
+    """Line 397: _ensure_cap returns early if cap is already for the right camera."""
+    episode = _make_episode_dir(tmp_path)
+    src = RecordedSource(episode, camera_key="ee_zed_m_left")
+
+    from unittest.mock import MagicMock
+
+    mock_cap = MagicMock()
+    src._cap = mock_cap
+    src._cap_camera_key = "ee_zed_m_left"
+
+    src._ensure_cap(tmp_path / "video.mp4")
+    assert src._cap is mock_cap  # unchanged
+
+
+def test_get_frame_at_cap_none_after_ensure(tmp_path):
+    """Line 292: get_frame_at returns None when _ensure_cap leaves _cap as None."""
+    episode = _make_episode_dir(tmp_path)
+    camera_dir = episode / "cameras" / "wrist"
+    camera_dir.mkdir(parents=True)
+    (camera_dir / "frames.jsonl").write_text(
+        json.dumps({"host_timestamp_ns": 0, "rgb_video_frame": 0}) + "\n"
+    )
+    (camera_dir / "rgb.mp4").write_bytes(b"fake")
+
+    src = RecordedSource(episode, camera_key="wrist")
+
+    from unittest.mock import MagicMock, patch
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.side_effect = ImportError("no cv2")
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        result = src.get_frame_at(0)
+    assert result is None
+
+
+def test_get_frame_at_exception_during_read(tmp_path):
+    """Lines 310-311: exception during cap.read is caught and returns None."""
+    episode = _make_episode_dir(tmp_path)
+    camera_dir = episode / "cameras" / "wrist"
+    camera_dir.mkdir(parents=True)
+    (camera_dir / "frames.jsonl").write_text(
+        json.dumps({"host_timestamp_ns": 0, "rgb_video_frame": 0}) + "\n"
+    )
+    (camera_dir / "rgb.mp4").write_bytes(b"fake")
+    src = RecordedSource(episode, camera_key="wrist")
+
+    from unittest.mock import MagicMock, patch
+
+    mock_cap = MagicMock()
+    mock_cap.isOpened.return_value = True
+    mock_cap.set.side_effect = RuntimeError("seek failed")
+
+    mock_cv2 = MagicMock()
+    mock_cv2.VideoCapture.return_value = mock_cap
+
+    with patch.dict("sys.modules", {"cv2": mock_cv2}):
+        result = src.get_frame_at(0)
+    assert result is None

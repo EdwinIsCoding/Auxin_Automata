@@ -307,7 +307,7 @@ class RecordedSource(TelemetrySource):
                     import cv2
 
                     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            except Exception as exc:
+            except Exception as exc:  # pragma: no cover – defensive
                 log.warning("recorded_source.frame_read_error error=%s", exc)
 
         return None

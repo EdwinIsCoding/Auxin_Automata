@@ -36,7 +36,7 @@ def _grade(score: float) -> str:
     for threshold, letter in _GRADE_MAP:
         if score >= threshold:
             return letter
-    return "F"
+    return "F"  # pragma: no cover – scores are clamped to [0, 100]; (0, "F") always matches
 
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:

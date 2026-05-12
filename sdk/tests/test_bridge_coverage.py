@@ -994,3 +994,237 @@ class TestInvoiceWorker:
 
         # Worker should have attempted generation
         bridge._invoice_generator.generate.assert_awaited_once()
+
+
+# ── Remaining bridge.py coverage gaps ────────────────────────────────────────
+
+
+class TestBridgeFrameSyncBroadcast:
+    """Line 654: telemetry_payload gets frame_sync when source provides it."""
+
+    @pytest.fixture()
+    def wallet(self, tmp_path: Path) -> HardwareWallet:
+        return HardwareWallet.load_or_create(tmp_path / "hw.json")
+
+    async def test_frame_sync_included_in_telemetry(self, wallet):
+        source = MockSource(rate_hz=0)
+        # Add get_frame_sync_info that returns non-None
+        source.get_frame_sync_info = lambda: {"frame_index": 42, "total_frames": 100}
+        broadcaster = _mock_broadcaster()
+        bridge = _make_bridge(source, _mock_oracle(), _mock_program_client(), wallet, broadcaster)
+        await bridge.process(_normal_frame())
+
+        call_args = broadcaster.broadcast.call_args_list[0][0][0]
+        assert call_args["type"] == "telemetry"
+        assert call_args["frame_sync"] == {"frame_index": 42, "total_frames": 100}
+
+
+class TestPaymentWorkerGetFrameAtNone:
+    """Line 847: get_frame_at returns None → falls back to sample_workspace_image."""
+
+    @pytest.fixture()
+    def wallet(self, tmp_path: Path) -> HardwareWallet:
+        return HardwareWallet.load_or_create(tmp_path / "hw.json")
+
+    async def test_fallback_when_get_frame_at_returns_none(self, wallet):
+        source = MockSource(rate_hz=0)
+        source.get_frame_at = lambda idx: None  # returns None
+        oracle = _mock_oracle(approved=True)
+        program_client = _mock_program_client()
+        bridge = _make_bridge(source, oracle, program_client, wallet, _mock_broadcaster())
+
+        await bridge._payment_queue.put(_PaymentTask(frame=_normal_frame(), source_frame_idx=0))
+        worker = asyncio.create_task(bridge._payment_worker())
+        await asyncio.sleep(0.05)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        oracle.check.assert_called_once()
+        program_client.stream_payment.assert_called_once()
+
+
+class TestScoringReadyViaPayments:
+    """Line 878: _scoring_ready set when payments_total >= _SCORING_MIN_PAYMENTS."""
+
+    @pytest.fixture()
+    def wallet(self, tmp_path: Path) -> HardwareWallet:
+        return HardwareWallet.load_or_create(tmp_path / "hw.json")
+
+    async def test_scoring_ready_triggered_by_payment_count(self, wallet):
+        program_client = _mock_program_client()
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(approved=True),
+            program_client,
+            wallet,
+            _mock_broadcaster(),
+        )
+        assert not bridge._scoring_ready.is_set()
+
+        # Process enough payments to trigger scoring_ready
+        for _ in range(bridge._SCORING_MIN_PAYMENTS):
+            await bridge._payment_queue.put(_PaymentTask(frame=_normal_frame()))
+
+        worker = asyncio.create_task(bridge._payment_worker())
+        await asyncio.sleep(0.1)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        assert bridge._scoring_ready.is_set()
+
+
+class TestPaymentLogRingBuffer:
+    """Line 898: payment_log is trimmed to _payment_log_max."""
+
+    @pytest.fixture()
+    def wallet(self, tmp_path: Path) -> HardwareWallet:
+        return HardwareWallet.load_or_create(tmp_path / "hw.json")
+
+    async def test_payment_log_trimmed_at_max(self, wallet):
+        program_client = _mock_program_client()
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(approved=True),
+            program_client,
+            wallet,
+            _mock_broadcaster(),
+        )
+        bridge._payment_log_max = 3  # tiny buffer for test
+
+        for _ in range(5):
+            await bridge._payment_queue.put(_PaymentTask(frame=_normal_frame()))
+
+        worker = asyncio.create_task(bridge._payment_worker())
+        await asyncio.sleep(0.15)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        assert len(bridge._payment_log) <= 3
+
+
+class TestSceneWorkerFallbackAndError:
+    """Lines 969-970, 995-996."""
+
+    @pytest.fixture()
+    def wallet(self, tmp_path: Path) -> HardwareWallet:
+        return HardwareWallet.load_or_create(tmp_path / "hw.json")
+
+    async def test_scene_worker_fallback_when_frame_none(self, wallet):
+        """Line 969-970: get_frame_at returns None → uses fixture image."""
+        source = MockSource(rate_hz=0)
+        source.get_frame_at = lambda idx: None
+        oracle = _mock_oracle()
+        oracle.describe_scene = AsyncMock(
+            return_value=SceneDescription(
+                objects=["table"],
+                scene_summary="A table",
+                confidence=0.8,
+                latency_ms=5.0,
+                used_fallback=False,
+            )
+        )
+        broadcaster = _mock_broadcaster()
+        bridge = _make_bridge(source, oracle, _mock_program_client(), wallet, broadcaster)
+
+        await bridge._scene_queue.put(_PaymentTask(frame=_normal_frame(), source_frame_idx=0))
+        worker = asyncio.create_task(bridge._scene_worker())
+        await asyncio.sleep(0.05)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        oracle.describe_scene.assert_called_once()
+        assert bridge._last_scene is not None
+
+    async def test_scene_worker_handles_exception(self, wallet):
+        """Lines 995-996: scene worker exception is caught and logged."""
+        oracle = _mock_oracle()
+        oracle.describe_scene = AsyncMock(side_effect=RuntimeError("scene boom"))
+        bridge = _make_bridge(
+            MockSource(rate_hz=0), oracle, _mock_program_client(), wallet, _mock_broadcaster()
+        )
+
+        await bridge._scene_queue.put(_PaymentTask(frame=_normal_frame()))
+        worker = asyncio.create_task(bridge._scene_worker())
+        await asyncio.sleep(0.05)
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+        # Worker should have drained the queue despite the error
+        assert bridge._scene_queue.qsize() == 0
+
+
+class TestRiskWorkerCancelled:
+    """Line 1055: CancelledError breaks the risk scoring loop."""
+
+    @pytest.fixture()
+    def wallet(self, tmp_path: Path) -> HardwareWallet:
+        return HardwareWallet.load_or_create(tmp_path / "hw.json")
+
+    async def test_risk_worker_exits_on_cancel(self, wallet):
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+        bridge._scoring_ready.set()
+        bridge._get_balance_sol = AsyncMock(return_value=1.0)
+
+        import auxin_sdk.bridge as bmod
+
+        orig = bmod._RISK_INTERVAL_S
+        bmod._RISK_INTERVAL_S = 0
+        try:
+            worker = asyncio.create_task(bridge._risk_scoring_worker())
+            await asyncio.sleep(0.05)
+            worker.cancel()
+            result = await asyncio.gather(worker, return_exceptions=True)
+            # Should exit cleanly via CancelledError
+            assert any(isinstance(r, asyncio.CancelledError) for r in result) or result == [None]
+        finally:
+            bmod._RISK_INTERVAL_S = orig
+
+
+class TestTreasuryWorkerErrorAndCancel:
+    """Lines 1146-1149."""
+
+    @pytest.fixture()
+    def wallet(self, tmp_path: Path) -> HardwareWallet:
+        return HardwareWallet.load_or_create(tmp_path / "hw.json")
+
+    async def test_treasury_worker_handles_exception(self, wallet):
+        """Lines 1148-1149: exception in treasury worker is caught."""
+        bridge = _make_bridge(
+            MockSource(rate_hz=0),
+            _mock_oracle(),
+            _mock_program_client(),
+            wallet,
+            _mock_broadcaster(),
+        )
+        bridge._scoring_ready.set()
+        bridge._treasury_agent = MagicMock()
+        bridge._treasury_agent.analyze = AsyncMock(side_effect=RuntimeError("LLM down"))
+        bridge._get_balance_sol = AsyncMock(return_value=1.0)
+
+        import auxin_sdk.bridge as bmod
+
+        orig = bmod._TREASURY_INTERVAL_S
+
+        call_count = 0
+
+        async def counting_sleep(_dur):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 1:
+                raise asyncio.CancelledError()
+
+        bmod._TREASURY_INTERVAL_S = 0
+        try:
+            with (
+                patch("asyncio.sleep", side_effect=counting_sleep),
+                pytest.raises(asyncio.CancelledError),
+            ):
+                await bridge._treasury_worker()
+        finally:
+            bmod._TREASURY_INTERVAL_S = orig

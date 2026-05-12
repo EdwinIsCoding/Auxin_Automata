@@ -329,7 +329,7 @@ class SafetyOracle:
             ):
                 with attempt:
                     return await self._call_gemini(client, frame, image_path)
-        except RetryError as exc:
+        except RetryError as exc:  # pragma: no cover – tenacity reraise=True
             last_exc = exc
         except Exception as exc:
             last_exc = exc
