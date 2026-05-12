@@ -41,7 +41,6 @@ from auxin_sdk.schema import TelemetryFrame
 from auxin_sdk.sources.mock import MockSource
 from auxin_sdk.wallet import HardwareWallet
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -152,9 +151,7 @@ class TestUmbraProvider:
         assert result.privacy_provider == "umbra"
         assert result.tx_signature == "UmbraSig123abc"
 
-    async def test_result_metadata_shape(
-        self, provider, wallet, owner_pubkey, provider_pubkey
-    ):
+    async def test_result_metadata_shape(self, provider, wallet, owner_pubkey, provider_pubkey):
         """Result metadata includes utxo_commitment, provider_pubkey, mint."""
         sidecar_resp = {
             "signature": "UmbraSig456",
@@ -222,9 +219,7 @@ class TestUmbraProvider:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.post = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
         with patch("auxin_sdk.privacy.umbra.httpx.AsyncClient", return_value=mock_client):
             result = await provider_with_fallback.send_payment(
@@ -242,15 +237,17 @@ class TestUmbraProvider:
         self, provider, wallet, owner_pubkey, provider_pubkey
     ):
         """Without fallback, sidecar errors raise RuntimeError."""
-        with _mock_httpx_post({"error": "boom"}, status_code=500):
-            with pytest.raises(RuntimeError, match="Umbra sidecar error 500"):
-                await provider.send_payment(
-                    wallet=wallet,
-                    owner_pubkey=owner_pubkey,
-                    provider_pubkey=provider_pubkey,
-                    lamports=5_000,
-                    idempotency_key="err-key",
-                )
+        with (
+            _mock_httpx_post({"error": "boom"}, status_code=500),
+            pytest.raises(RuntimeError, match="Umbra sidecar error 500"),
+        ):
+            await provider.send_payment(
+                wallet=wallet,
+                owner_pubkey=owner_pubkey,
+                provider_pubkey=provider_pubkey,
+                lamports=5_000,
+                idempotency_key="err-key",
+            )
 
     async def test_health_check_true_on_200(self, provider):
         """health_check() returns True when sidecar responds 200."""
@@ -270,9 +267,7 @@ class TestUmbraProvider:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
         with patch("auxin_sdk.privacy.umbra.httpx.AsyncClient", return_value=mock_client):
             assert await provider.health_check() is False
@@ -284,9 +279,7 @@ class TestUmbraProvider:
             "scope": "yearly",
         }
         with _mock_httpx_post(sidecar_resp):
-            result = await provider.export_viewing_key(
-                wallet, scope="yearly", year=2026
-            )
+            result = await provider.export_viewing_key(wallet, scope="yearly", year=2026)
 
         assert result["viewing_key"] == "abcdef1234567890"
         assert result["scope"] == "yearly"

@@ -32,14 +32,13 @@ from auxin_sdk.bridge import (
 )
 from auxin_sdk.hashing import sha256_hex
 from auxin_sdk.oracle import OracleDecision, SafetyOracle
-from auxin_sdk.privacy.base import PaymentResult, PrivacyProvider
+from auxin_sdk.privacy.base import PaymentResult
 from auxin_sdk.privacy.cloak import CloakProvider
 from auxin_sdk.privacy.direct import DirectProvider
 from auxin_sdk.program.client import AuxinProgramClient
 from auxin_sdk.schema import TelemetryFrame
 from auxin_sdk.sources.mock import MockSource
 from auxin_sdk.wallet import HardwareWallet
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -172,9 +171,7 @@ class TestCloakProvider:
         assert "utxo_commitment" in result.metadata
         assert result.metadata["utxo_commitment"] == "deadbeef"
 
-    async def test_unique_utxo_per_payment(
-        self, provider, wallet, owner_pubkey, provider_pubkey
-    ):
+    async def test_unique_utxo_per_payment(self, provider, wallet, owner_pubkey, provider_pubkey):
         """Each payment should produce a distinct UTXO commitment."""
         results = []
         for i in range(3):
@@ -243,32 +240,36 @@ class TestCloakProvider:
     ):
         """Without fallback, subprocess errors raise RuntimeError."""
         stderr = json.dumps({"error": "boom"}).encode()
-        with _mock_subprocess(stdout=b"", stderr=stderr, returncode=1):
-            with pytest.raises(RuntimeError, match="Cloak deposit failed: boom"):
-                await provider.send_payment(
-                    wallet=wallet,
-                    owner_pubkey=owner_pubkey,
-                    provider_pubkey=provider_pubkey,
-                    lamports=5_000,
-                    idempotency_key="err-key",
-                )
+        with (
+            _mock_subprocess(stdout=b"", stderr=stderr, returncode=1),
+            pytest.raises(RuntimeError, match="Cloak deposit failed: boom"),
+        ):
+            await provider.send_payment(
+                wallet=wallet,
+                owner_pubkey=owner_pubkey,
+                provider_pubkey=provider_pubkey,
+                lamports=5_000,
+                idempotency_key="err-key",
+            )
 
     async def test_node_not_found_raises_clear_error(
         self, provider, wallet, owner_pubkey, provider_pubkey
     ):
         """Missing Node.js raises a helpful RuntimeError."""
-        with patch(
-            "auxin_sdk.privacy.cloak.asyncio.create_subprocess_exec",
-            side_effect=FileNotFoundError("node"),
+        with (
+            patch(
+                "auxin_sdk.privacy.cloak.asyncio.create_subprocess_exec",
+                side_effect=FileNotFoundError("node"),
+            ),
+            pytest.raises(RuntimeError, match="Node.js not found"),
         ):
-            with pytest.raises(RuntimeError, match="Node.js not found"):
-                await provider.send_payment(
-                    wallet=wallet,
-                    owner_pubkey=owner_pubkey,
-                    provider_pubkey=provider_pubkey,
-                    lamports=5_000,
-                    idempotency_key="nonode-key",
-                )
+            await provider.send_payment(
+                wallet=wallet,
+                owner_pubkey=owner_pubkey,
+                provider_pubkey=provider_pubkey,
+                lamports=5_000,
+                idempotency_key="nonode-key",
+            )
 
     async def test_subprocess_timeout_raises_clear_error(
         self, provider, wallet, owner_pubkey, provider_pubkey
@@ -281,20 +282,21 @@ class TestCloakProvider:
         proc = AsyncMock()
         proc.communicate = _slow_communicate
 
-        with patch(
-            "auxin_sdk.privacy.cloak.asyncio.create_subprocess_exec",
-            return_value=proc,
-        ), patch(
-            "auxin_sdk.privacy.cloak._SUBPROCESS_TIMEOUT_S", 0.01
+        with (
+            patch(
+                "auxin_sdk.privacy.cloak.asyncio.create_subprocess_exec",
+                return_value=proc,
+            ),
+            patch("auxin_sdk.privacy.cloak._SUBPROCESS_TIMEOUT_S", 0.01),
+            pytest.raises(RuntimeError, match="timed out"),
         ):
-            with pytest.raises(RuntimeError, match="timed out"):
-                await provider.send_payment(
-                    wallet=wallet,
-                    owner_pubkey=owner_pubkey,
-                    provider_pubkey=provider_pubkey,
-                    lamports=5_000,
-                    idempotency_key="timeout-key",
-                )
+            await provider.send_payment(
+                wallet=wallet,
+                owner_pubkey=owner_pubkey,
+                provider_pubkey=provider_pubkey,
+                lamports=5_000,
+                idempotency_key="timeout-key",
+            )
 
 
 # ── Compliance bypass tests ───────────────────────────────────────────────────

@@ -256,8 +256,7 @@ def _build_privacy_provider(
         return provider
 
     raise ValueError(
-        f"Unknown AUXIN_PRIVACY={provider_name!r}. "
-        "Valid values: direct, cloak, magicblock, umbra"
+        f"Unknown AUXIN_PRIVACY={provider_name!r}. Valid values: direct, cloak, magicblock, umbra"
     )
 
 
@@ -284,7 +283,9 @@ async def main() -> None:
         program_id=cluster_cfg.program_id,
         rpc_url=cluster_cfg.rpc_url,
     )
-    print(f"Bridge starting on [{cluster_cfg.cluster.upper()}] with program [{cluster_cfg.program_id}]")
+    print(
+        f"Bridge starting on [{cluster_cfg.cluster.upper()}] with program [{cluster_cfg.program_id}]"
+    )
 
     # ── Config from env ───────────────────────────────────────────────────────
     source_name = os.environ.get("AUXIN_SOURCE", "mock")
@@ -299,7 +300,9 @@ async def main() -> None:
     # AUXIN_PROGRAM_ID env var still overrides cluster config if set explicitly
     program_id = os.environ.get("AUXIN_PROGRAM_ID") or cluster_cfg.program_id or None
 
-    hw_path = cluster_cfg.hardware_keypair_path or os.environ.get("HW_KEYPAIR_PATH", "~/.config/auxin/hardware.json")
+    hw_path = cluster_cfg.hardware_keypair_path or os.environ.get(
+        "HW_KEYPAIR_PATH", "~/.config/auxin/hardware.json"
+    )
     owner_path = os.environ.get("OWNER_KEYPAIR_PATH", "~/.config/auxin/owner.json")
 
     ws_port = int(os.environ.get("BRIDGE_WS_PORT", "8766"))
@@ -323,7 +326,9 @@ async def main() -> None:
     # ── Oracle ────────────────────────────────────────────────────────────────
     _prompts_dir = _SDK_ROOT / "src" / "auxin_sdk" / "prompts"
     _replay_prompt = _prompts_dir / "replay_oracle_v1.txt"
-    _oracle_prompt = _replay_prompt if source_name == "recorded" and _replay_prompt.exists() else None
+    _oracle_prompt = (
+        _replay_prompt if source_name == "recorded" and _replay_prompt.exists() else None
+    )
     oracle = SafetyOracle(
         api_key=os.environ.get("GEMINI_API_KEY"),
         prompt_file=_oracle_prompt,

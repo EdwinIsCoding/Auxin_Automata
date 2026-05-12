@@ -54,13 +54,14 @@ frames.jsonl row schema:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import threading
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import anyio
 
@@ -154,10 +155,9 @@ class RecordedSource(TelemetrySource):
         meta_path = self._episode_dir / "session_metadata.json"
         if meta_path.exists():
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            zed_fps = (
-                meta.get("config", {}).get("zed", {}).get("fps")
-                or meta.get("config", {}).get("realsense", {}).get("fps")
-            )
+            zed_fps = meta.get("config", {}).get("zed", {}).get("fps") or meta.get(
+                "config", {}
+            ).get("realsense", {}).get("fps")
             if zed_fps:
                 self._camera_fps = float(zed_fps)
 
@@ -195,8 +195,6 @@ class RecordedSource(TelemetrySource):
             yield self._make_session_sentinel("replay_session_start")
 
             # ── Main replay loop ──────────────────────────────────────────────
-            start_ns = self._robot_rows[0].get("timestamp_ns", 0)
-
             for idx, row in enumerate(self._robot_rows):
                 if self._closed:
                     return
@@ -240,10 +238,8 @@ class RecordedSource(TelemetrySource):
         self._closed = True
         with self._cap_lock:
             if self._cap is not None:
-                try:
+                with contextlib.suppress(Exception):
                     self._cap.release()
-                except Exception:
-                    pass
                 self._cap = None
         log.info("recorded_source.closed")
 
@@ -274,7 +270,7 @@ class RecordedSource(TelemetrySource):
         path = self._episode_dir / "cameras" / key / "rgb.mp4"
         return path if path.exists() else None
 
-    def get_frame_at(self, robot_frame_idx: int) -> Optional["np.ndarray"]:  # type: ignore[name-defined]
+    def get_frame_at(self, robot_frame_idx: int) -> Any | None:
         """
         Return the RGB frame from the video file closest to the given robot frame index.
         Returns None if the video is unavailable or the index is out of range.
@@ -309,6 +305,7 @@ class RecordedSource(TelemetrySource):
                 ret, frame = self._cap.read()
                 if ret and frame is not None:
                     import cv2
+
                     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             except Exception as exc:
                 log.warning("recorded_source.frame_read_error error=%s", exc)
@@ -321,9 +318,7 @@ class RecordedSource(TelemetrySource):
         if not cameras_dir.exists():
             return []
         return [
-            d.name
-            for d in sorted(cameras_dir.iterdir())
-            if d.is_dir() and (d / "rgb.mp4").exists()
+            d.name for d in sorted(cameras_dir.iterdir()) if d.is_dir() and (d / "rgb.mp4").exists()
         ]
 
     @property
@@ -369,10 +364,12 @@ class RecordedSource(TelemetrySource):
             anomaly_flags.append("torque_spike")
 
         return TelemetryFrame(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             joint_positions=q[:7] if len(q) >= 7 else q + [0.0] * (7 - len(q)),
             joint_velocities=dq[:7] if len(dq) >= 7 else dq + [0.0] * (7 - len(dq)),
-            joint_torques=torques[:7] if len(torques) >= 7 else torques + [0.0] * (7 - len(torques)),
+            joint_torques=torques[:7]
+            if len(torques) >= 7
+            else torques + [0.0] * (7 - len(torques)),
             end_effector_pose=end_effector_pose,
             anomaly_flags=anomaly_flags,
         )
@@ -386,7 +383,7 @@ class RecordedSource(TelemetrySource):
         dq = rs.get("dq", [0.0] * 7)
         n = max(len(q), 7)
         return TelemetryFrame(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             joint_positions=(q + [0.0] * n)[:7],
             joint_velocities=(dq + [0.0] * n)[:7],
             joint_torques=[0.0] * 7,
@@ -399,14 +396,13 @@ class RecordedSource(TelemetrySource):
         if self._cap is not None and self._cap_camera_key == self._camera_key:
             return
         if self._cap is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._cap.release()
-            except Exception:
-                pass
             self._cap = None
 
         try:
             import cv2
+
             self._cap = cv2.VideoCapture(str(video_path))
             if not self._cap.isOpened():
                 log.warning("recorded_source.video_open_failed path=%s", video_path)
@@ -423,7 +419,9 @@ class RecordedSource(TelemetrySource):
                 self._cap_camera_key = self._camera_key
                 log.info("recorded_source.video_opened path=%s", video_path)
         except ImportError:
-            log.warning("recorded_source.cv2_not_available — install opencv-python for frame extraction")
+            log.warning(
+                "recorded_source.cv2_not_available — install opencv-python for frame extraction"
+            )
             self._cap = None
         except Exception as exc:
             log.warning("recorded_source.video_error error=%s", exc)

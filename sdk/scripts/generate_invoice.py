@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Allow running from the repo root without installing
@@ -25,8 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 async def main(args: argparse.Namespace) -> None:
     from auxin_sdk.invoicing.generator import InvoiceGenerator
 
-    period_start = datetime.strptime(args.from_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    period_end = datetime.strptime(args.to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+    period_start = datetime.strptime(args.from_date, "%Y-%m-%d").replace(tzinfo=UTC)
+    period_end = datetime.strptime(args.to_date, "%Y-%m-%d").replace(
+        hour=23, minute=59, second=59, tzinfo=UTC
+    )
 
     # Try to fetch from on-chain if RPC is available
     payment_history: list[dict] = []
@@ -43,21 +44,21 @@ async def main(args: argparse.Namespace) -> None:
             async with AuxinProgramClient.connect(rpc_url) as client:
                 events = await client.get_recent_events(limit=1000)
                 for ev in events:
-                    ts = ev.get("timestamp", "")
                     if ev.get("kind") == "payment":
                         payment_history.append(ev)
                     elif ev.get("kind") == "compliance":
                         compliance_history.append(ev)
-            print(f"Loaded {len(payment_history)} payments, {len(compliance_history)} compliance events")
+            print(
+                f"Loaded {len(payment_history)} payments, {len(compliance_history)} compliance events"
+            )
         except Exception as exc:
             print(f"Warning: Could not fetch from chain: {exc}")
             print("Falling back to empty history — pass --mock to use demo data.")
 
     if args.mock or not (rpc_url and program_id):
         print("Using mock data for demo…")
-        from auxin_sdk.risk.scorer import calculate_risk_score
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         from datetime import timedelta
 
         providers = ["ProvA", "ProvB", "ProvC"]
@@ -66,7 +67,7 @@ async def main(args: argparse.Namespace) -> None:
                 "timestamp": (now - timedelta(hours=i * 2)).isoformat(),
                 "lamports": 5000,
                 "provider": providers[i % 3],
-                "tx_signature": f"mocktx{i:06d}{'0'*40}",
+                "tx_signature": f"mocktx{i:06d}{'0' * 40}",
                 "success": True,
             }
             for i in range(50)
@@ -77,7 +78,7 @@ async def main(args: argparse.Namespace) -> None:
                 "severity": 1,
                 "reason_code": 2,
                 "hash": "deadbeef" * 8,
-                "tx_signature": f"mockcomp{'0'*52}",
+                "tx_signature": f"mockcomp{'0' * 52}",
             }
         ]
 

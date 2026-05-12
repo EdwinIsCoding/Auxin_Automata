@@ -244,17 +244,13 @@ class UmbraProvider(PrivacyProvider):
             async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
                 resp = await client.post(url, json=body)
         except httpx.RequestError as exc:
-            raise RuntimeError(
-                f"Umbra sidecar unreachable at {url}: {exc}"
-            ) from exc
+            raise RuntimeError(f"Umbra sidecar unreachable at {url}: {exc}") from exc
 
         if resp.status_code >= 400:
             try:
                 detail = resp.json()
             except Exception:
                 detail = resp.text
-            raise RuntimeError(
-                f"Umbra sidecar error {resp.status_code}: {detail}"
-            )
+            raise RuntimeError(f"Umbra sidecar error {resp.status_code}: {detail}")
 
         return resp.json()

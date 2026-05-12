@@ -6,8 +6,6 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from auxin_sdk.config import (
     DEVNET_PROGRAM_ID,
     ClusterConfig,
@@ -15,7 +13,6 @@ from auxin_sdk.config import (
     explorer_url,
     get_cluster_config,
 )
-
 
 # ── _load_env_file ────────────────────────────────────────────────────────────
 
@@ -43,7 +40,7 @@ def test_load_env_file_ignores_comments(tmp_path: Path) -> None:
 
 def test_load_env_file_strips_quotes(tmp_path: Path) -> None:
     env = tmp_path / ".env.test"
-    env.write_text('QUOTED="hello world"\nSINGLE=\'bye\'\n')
+    env.write_text("QUOTED=\"hello world\"\nSINGLE='bye'\n")
     result = _load_env_file(env)
     assert result["QUOTED"] == "hello world"
     assert result["SINGLE"] == "bye"

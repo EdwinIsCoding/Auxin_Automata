@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,15 +34,13 @@ from auxin_sdk.bridge import (
 )
 from auxin_sdk.hashing import sha256_hex
 from auxin_sdk.oracle import OracleDecision, SafetyOracle
-from auxin_sdk.privacy.base import PaymentResult, PrivacyProvider
+from auxin_sdk.privacy.base import PaymentResult
 from auxin_sdk.privacy.direct import DirectProvider
-from auxin_sdk.privacy.magicblock import MagicBlockProvider, _sign_transaction_bytes
+from auxin_sdk.privacy.magicblock import MagicBlockProvider
 from auxin_sdk.program.client import AuxinProgramClient
 from auxin_sdk.schema import TelemetryFrame
-from datetime import UTC, datetime
 from auxin_sdk.sources.mock import MockSource
 from auxin_sdk.wallet import HardwareWallet
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -169,7 +168,9 @@ class TestMagicBlockProvider:
         with (
             _mock_httpx_post(_make_api_response()),
             _mock_solana_send("MagicBlockSig123"),
-            patch("auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64),
+            patch(
+                "auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64
+            ),
         ):
             result = await provider.send_payment(
                 wallet=wallet,
@@ -184,14 +185,14 @@ class TestMagicBlockProvider:
         assert result.privacy_provider == "magicblock"
         assert result.tx_signature == "MagicBlockSig123"
 
-    async def test_result_metadata_shape(
-        self, provider, wallet, owner_pubkey, provider_pubkey
-    ):
+    async def test_result_metadata_shape(self, provider, wallet, owner_pubkey, provider_pubkey):
         """Result metadata includes provider_pubkey, mint, cluster."""
         with (
             _mock_httpx_post(_make_api_response()),
             _mock_solana_send(),
-            patch("auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64),
+            patch(
+                "auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64
+            ),
         ):
             result = await provider.send_payment(
                 wallet=wallet,
@@ -211,7 +212,9 @@ class TestMagicBlockProvider:
         with (
             _mock_httpx_post(_make_api_response()) as mock_http,
             _mock_solana_send(),
-            patch("auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64),
+            patch(
+                "auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64
+            ),
         ):
             await provider.send_payment(
                 wallet=wallet,
@@ -259,9 +262,7 @@ class TestMagicBlockProvider:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.post = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
         with patch("auxin_sdk.privacy.magicblock.httpx.AsyncClient", return_value=mock_client):
             result = await provider_with_fallback.send_payment(
@@ -279,22 +280,26 @@ class TestMagicBlockProvider:
         self, provider, wallet, owner_pubkey, provider_pubkey
     ):
         """Without fallback, API errors raise RuntimeError."""
-        with _mock_httpx_post({"detail": "AML check failed"}, status_code=400):
-            with pytest.raises(RuntimeError, match="MagicBlock API error 400"):
-                await provider.send_payment(
-                    wallet=wallet,
-                    owner_pubkey=owner_pubkey,
-                    provider_pubkey=provider_pubkey,
-                    lamports=5_000,
-                    idempotency_key="err-key",
-                )
+        with (
+            _mock_httpx_post({"detail": "AML check failed"}, status_code=400),
+            pytest.raises(RuntimeError, match="MagicBlock API error 400"),
+        ):
+            await provider.send_payment(
+                wallet=wallet,
+                owner_pubkey=owner_pubkey,
+                provider_pubkey=provider_pubkey,
+                lamports=5_000,
+                idempotency_key="err-key",
+            )
 
     async def test_delegate_budget_calls_deposit(self, provider, wallet):
         """delegate_budget() calls POST /v1/spl/deposit and returns a signature."""
         with (
             _mock_httpx_post(_make_api_response()) as mock_http,
             _mock_solana_send("DepositSig456"),
-            patch("auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64),
+            patch(
+                "auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64
+            ),
         ):
             sig = await provider.delegate_budget(wallet, lamports=100_000_000)
 
@@ -327,7 +332,9 @@ class TestMagicBlockProvider:
         with (
             patch("auxin_sdk.privacy.magicblock.httpx.AsyncClient", return_value=mock_client),
             _mock_solana_send(),
-            patch("auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64),
+            patch(
+                "auxin_sdk.privacy.magicblock._sign_transaction_bytes", return_value=b"\x00" * 64
+            ),
         ):
             await provider_with_key.send_payment(
                 wallet=wallet,

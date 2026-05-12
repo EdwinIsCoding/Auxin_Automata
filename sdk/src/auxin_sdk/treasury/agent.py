@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -168,7 +168,9 @@ class TreasuryAgent:
         for act_data in data.get("recommended_actions", []):
             action_str = act_data.get("action", "")
             # Enforce safety: auto_executable only for allowlisted actions
-            safe_auto = _is_auto_executable_safe(action_str) and act_data.get("auto_executable", False)
+            safe_auto = _is_auto_executable_safe(action_str) and act_data.get(
+                "auto_executable", False
+            )
             actions.append(
                 RecommendedAction(
                     action=action_str,
@@ -198,7 +200,7 @@ class TreasuryAgent:
             anomaly_flags=data.get("anomaly_flags", []),
             summary=data.get("summary", ""),
             risk_score_context=risk_score,
-            analyzed_at=datetime.now(timezone.utc),
+            analyzed_at=datetime.now(UTC),
             used_fallback=False,
         )
 
@@ -212,9 +214,10 @@ class TreasuryAgent:
         context: str,
     ) -> TreasuryAnalysis:
         """Heuristic treasury analysis used when the LLM API is unavailable."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         last_24h = [
-            p for p in payment_history
+            p
+            for p in payment_history
             if self._parse_ts(p.get("timestamp")) >= now - timedelta(hours=24)
         ]
         total_spent_24h = sum(p.get("lamports", 0) for p in last_24h)
@@ -267,7 +270,7 @@ class TreasuryAgent:
                     RecommendedAction(
                         action="diversify_providers",
                         priority="medium",
-                        reasoning=f"Single provider handles {top_provider_pct*100:.0f}% of payments.",
+                        reasoning=f"Single provider handles {top_provider_pct * 100:.0f}% of payments.",
                         auto_executable=False,
                     )
                 )
@@ -309,13 +312,15 @@ class TreasuryAgent:
         balance: float,
         risk_score: float | None,
     ) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         last_24h = [
-            p for p in payment_history
+            p
+            for p in payment_history
             if self._parse_ts(p.get("timestamp")) >= now - timedelta(hours=24)
         ]
         last_6h = [
-            p for p in payment_history
+            p
+            for p in payment_history
             if self._parse_ts(p.get("timestamp")) >= now - timedelta(hours=6)
         ]
         total_spent_24h = sum(p.get("lamports", 0) for p in last_24h)
@@ -346,11 +351,11 @@ class TreasuryAgent:
     @staticmethod
     def _parse_ts(value: Any) -> datetime:
         if isinstance(value, datetime):
-            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            return value if value.tzinfo else value.replace(tzinfo=UTC)
         if isinstance(value, str):
             try:
                 dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+                return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
             except ValueError:
                 pass
-        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+        return datetime(1970, 1, 1, tzinfo=UTC)

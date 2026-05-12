@@ -9,9 +9,8 @@ Machine Health Score (0-100) is composed of four weighted dimensions:
 
 from __future__ import annotations
 
-import math
 import statistics
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .types import RiskBreakdown, RiskReport
@@ -23,7 +22,7 @@ _GRADE_MAP = [
     (65, "B"),
     (50, "C"),
     (35, "D"),
-    (0,  "F"),
+    (0, "F"),
 ]
 
 # ── Severity weights for compliance ──────────────────────────────────────────
@@ -63,14 +62,12 @@ def _score_financial_health(
         factors.append("No payment history — neutral defaults applied")
         return 50.0, factors
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     last_24h = [
-        p for p in payment_history
-        if _parse_ts(p.get("timestamp")) >= now - timedelta(hours=24)
+        p for p in payment_history if _parse_ts(p.get("timestamp")) >= now - timedelta(hours=24)
     ]
     last_7d = [
-        p for p in payment_history
-        if _parse_ts(p.get("timestamp")) >= now - timedelta(days=7)
+        p for p in payment_history if _parse_ts(p.get("timestamp")) >= now - timedelta(days=7)
     ]
 
     # Burn rate: total lamports spent in last 24 h / 24
@@ -127,7 +124,7 @@ def _score_financial_health(
         trend_score = 70.0
         factors.append("Insufficient 7-day data — neutral trend")
 
-    score = (runway_score * 0.40 + stability_score * 0.35 + trend_score * 0.25)
+    score = runway_score * 0.40 + stability_score * 0.35 + trend_score * 0.25
     return _clamp(score), factors
 
 
@@ -151,8 +148,7 @@ def _score_operational_stability(
     # Inter-payment intervals (seconds)
     timestamps = [_parse_ts(p.get("timestamp")) for p in sorted_payments]
     intervals = [
-        (timestamps[i + 1] - timestamps[i]).total_seconds()
-        for i in range(len(timestamps) - 1)
+        (timestamps[i + 1] - timestamps[i]).total_seconds() for i in range(len(timestamps) - 1)
     ]
 
     mean_interval = statistics.mean(intervals)
@@ -166,8 +162,10 @@ def _score_operational_stability(
         factors.append("Uniform intervals — high regularity")
 
     # Uptime: % of expected operating hours with ≥1 payment
-    now = datetime.now(timezone.utc)
-    last_7d = [p for p in payment_history if _parse_ts(p.get("timestamp")) >= now - timedelta(days=7)]
+    now = datetime.now(UTC)
+    last_7d = [
+        p for p in payment_history if _parse_ts(p.get("timestamp")) >= now - timedelta(days=7)
+    ]
     expected_hours = 7 * 24
     active_hours: set[int] = set()
     for p in last_7d:
@@ -176,16 +174,16 @@ def _score_operational_stability(
         active_hours.add(hours_ago)
     uptime_pct = len(active_hours) / expected_hours if expected_hours > 0 else 0.0
     uptime_score = _clamp(uptime_pct * 100.0)
-    factors.append(f"Uptime: {uptime_pct*100:.0f}% of expected operating hours (7d)")
+    factors.append(f"Uptime: {uptime_pct * 100:.0f}% of expected operating hours (7d)")
 
     # Successful tx ratio
     total = len(payment_history)
     successful = sum(1 for p in payment_history if p.get("success", True))
     success_ratio = successful / total if total > 0 else 1.0
     success_score = _clamp(success_ratio * 100.0)
-    factors.append(f"Tx success rate: {success_ratio*100:.0f}%")
+    factors.append(f"Tx success rate: {success_ratio * 100:.0f}%")
 
-    score = (regularity_score * 0.45 + uptime_score * 0.35 + success_score * 0.20)
+    score = regularity_score * 0.45 + uptime_score * 0.35 + success_score * 0.20
     return _clamp(score), factors
 
 
@@ -200,7 +198,7 @@ def _score_compliance_record(
       - Days since last severity ≥ 2 event
     """
     factors: list[str] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     total_tx = max(len(payment_history), 1)
 
@@ -208,14 +206,11 @@ def _score_compliance_record(
     compliance_count = len(compliance_history)
     rate = compliance_count / total_tx
     rate_score = _clamp((1.0 - min(rate / 0.05, 1.0)) * 100.0)
-    factors.append(f"Compliance rate: {rate*100:.1f} per 100 tx (target <5%)")
+    factors.append(f"Compliance rate: {rate * 100:.1f} per 100 tx (target <5%)")
 
     # Severity distribution: weighted penalty
     if compliance_history:
-        penalty = sum(
-            _SEVERITY_WEIGHTS.get(e.get("severity", 0), 0.1)
-            for e in compliance_history
-        )
+        penalty = sum(_SEVERITY_WEIGHTS.get(e.get("severity", 0), 0.1) for e in compliance_history)
         max_penalty = len(compliance_history) * 1.0  # all sev-3
         penalty_ratio = min(penalty / max(max_penalty, 1), 1.0)
         severity_score = _clamp((1.0 - penalty_ratio) * 100.0)
@@ -225,9 +220,7 @@ def _score_compliance_record(
         factors.append("No compliance events — perfect severity score")
 
     # Days since last severity ≥ 2
-    high_sev_events = [
-        e for e in compliance_history if e.get("severity", 0) >= 2
-    ]
+    high_sev_events = [e for e in compliance_history if e.get("severity", 0) >= 2]
     if high_sev_events:
         latest_ts = max(_parse_ts(e.get("timestamp")) for e in high_sev_events)
         days_since = (now - latest_ts).total_seconds() / 86400.0
@@ -296,7 +289,7 @@ def _score_provider_diversity(
             cur_provider = pkey
     streak_pct = max_streak / total if total > 0 else 0.0
     streak_score = _clamp((1.0 - min(streak_pct, 1.0)) * 100.0)
-    factors.append(f"Longest provider streak: {max_streak} ({streak_pct*100:.0f}% of payments)")
+    factors.append(f"Longest provider streak: {max_streak} ({streak_pct * 100:.0f}% of payments)")
 
     score = diversity_score * 0.40 + hhi_score * 0.40 + streak_score * 0.20
     return _clamp(score), factors
@@ -339,7 +332,7 @@ def _compute_trend_data(
       - May 10:   brief recovery plateau
       - May 11:   live score (today)
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Live (today) score is the anchor
     today_score = _clamp(current_overall if current_overall is not None else 60.0)
@@ -357,13 +350,13 @@ def _compute_trend_data(
     # We define deltas above today's score so the curve scales with whatever live score is.
     # Shape: plateau → sharp drop → plateau → sharp drop → drift to today
     _delta_by_offset = {
-        6: 28.5,   # May 5:  healthy baseline, before any mainnet load
-        5: 27.8,   # May 6:  still pre-test, near-identical to day before (plateau)
-        4: 18.0,   # May 7:  first mainnet payment stream — provider diversity tanks
-        3: 17.2,   # May 8:  plateau, minor drift downward
-        2:  8.5,   # May 9:  compliance stress + torque tests — compliance record drops
-        1:  7.8,   # May 10: short recovery plateau
-        0:  0.0,   # May 11: today — live score
+        6: 28.5,  # May 5:  healthy baseline, before any mainnet load
+        5: 27.8,  # May 6:  still pre-test, near-identical to day before (plateau)
+        4: 18.0,  # May 7:  first mainnet payment stream — provider diversity tanks
+        3: 17.2,  # May 8:  plateau, minor drift downward
+        2: 8.5,  # May 9:  compliance stress + torque tests — compliance record drops
+        1: 7.8,  # May 10: short recovery plateau
+        0: 0.0,  # May 11: today — live score
     }
 
     points: list[dict[str, Any]] = []
@@ -383,7 +376,9 @@ def _compute_trend_data(
     cutoff_recent = now - timedelta(days=3)
     cutoff_older = now - timedelta(days=6)
 
-    def _window_compliance_penalty(events: list[dict[str, Any]], lo: datetime, hi: datetime) -> float:
+    def _window_compliance_penalty(
+        events: list[dict[str, Any]], lo: datetime, hi: datetime
+    ) -> float:
         return sum(
             _SEVERITY_WEIGHTS.get(e.get("severity", 0), 0.0)
             for e in events
@@ -397,8 +392,7 @@ def _compute_trend_data(
         1 for p in payment_history if _parse_ts(p.get("timestamp")) >= cutoff_recent
     )
     older_payment_count = sum(
-        1 for p in payment_history
-        if cutoff_older <= _parse_ts(p.get("timestamp")) < cutoff_recent
+        1 for p in payment_history if cutoff_older <= _parse_ts(p.get("timestamp")) < cutoff_recent
     )
 
     improving = 0
@@ -458,7 +452,7 @@ def calculate_risk_score(
     """
     # Edge case: empty / new wallet
     if not payment_history and not compliance_history:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         breakdown = [
             RiskBreakdown(
                 category="Financial Health",
@@ -501,18 +495,30 @@ def calculate_risk_score(
     comp_score, comp_factors = _score_compliance_record(compliance_history, payment_history)
     div_score, div_factors = _score_provider_diversity(payment_history)
 
-    overall = _clamp(
-        fh_score * 0.30
-        + ops_score * 0.25
-        + comp_score * 0.25
-        + div_score * 0.20
-    )
+    overall = _clamp(fh_score * 0.30 + ops_score * 0.25 + comp_score * 0.25 + div_score * 0.20)
 
     breakdown = [
-        RiskBreakdown(category="Financial Health", score=round(fh_score, 1), weight=0.30, factors=fh_factors),
-        RiskBreakdown(category="Operational Stability", score=round(ops_score, 1), weight=0.25, factors=ops_factors),
-        RiskBreakdown(category="Compliance Record", score=round(comp_score, 1), weight=0.25, factors=comp_factors),
-        RiskBreakdown(category="Provider Diversity", score=round(div_score, 1), weight=0.20, factors=div_factors),
+        RiskBreakdown(
+            category="Financial Health", score=round(fh_score, 1), weight=0.30, factors=fh_factors
+        ),
+        RiskBreakdown(
+            category="Operational Stability",
+            score=round(ops_score, 1),
+            weight=0.25,
+            factors=ops_factors,
+        ),
+        RiskBreakdown(
+            category="Compliance Record",
+            score=round(comp_score, 1),
+            weight=0.25,
+            factors=comp_factors,
+        ),
+        RiskBreakdown(
+            category="Provider Diversity",
+            score=round(div_score, 1),
+            weight=0.20,
+            factors=div_factors,
+        ),
     ]
 
     trend_data, trend = _compute_trend_data(payment_history, compliance_history, balance, overall)
@@ -523,7 +529,7 @@ def calculate_risk_score(
         breakdown=breakdown,
         trend=trend,
         trend_data=trend_data,
-        computed_at=datetime.now(timezone.utc),
+        computed_at=datetime.now(UTC),
     )
 
 
@@ -533,11 +539,11 @@ def calculate_risk_score(
 def _parse_ts(value: Any) -> datetime:
     """Parse a timestamp value to a timezone-aware datetime. Returns epoch on failure."""
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, str):
         try:
             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
         except ValueError:
             pass
-    return datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return datetime(1970, 1, 1, tzinfo=UTC)

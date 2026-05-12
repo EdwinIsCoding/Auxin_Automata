@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,12 +21,12 @@ def _make_risk_report(score: float = 75.0) -> RiskReport:
         breakdown=[bd],
         trend="stable",
         trend_data=[],
-        computed_at=datetime.now(timezone.utc),
+        computed_at=datetime.now(UTC),
     )
 
 
 def _make_payments(n: int = 50, provider: str = "ProvA") -> list[dict]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [
         {
             "timestamp": (now - timedelta(hours=i)).isoformat(),
@@ -83,8 +83,9 @@ class TestFallbackAnalysis:
         agent = TreasuryAgent(api_key=None)
         # 50 payments in last 24h at 100_000 lamports each → burn_rate ~208k lam/hr
         # balance 0.001 SOL = 1_000_000 lamports → runway ~4.8h → critical
-        from datetime import datetime, timedelta, timezone
-        now = datetime.now(timezone.utc)
+        from datetime import datetime, timedelta
+
+        now = datetime.now(UTC)
         payments = [
             {
                 "timestamp": (now - timedelta(hours=i * 0.4)).isoformat(),
@@ -124,7 +125,6 @@ class TestLLMIntegration:
     @pytest.mark.asyncio
     async def test_prompt_includes_risk_score(self):
         agent = TreasuryAgent(api_key="test-key")
-        risk = _make_risk_report(score=42.0)
         context = agent._build_context(_make_payments(10), [], 1.5, risk_score=42.0)
         assert "42" in context or "42.0" in context
 

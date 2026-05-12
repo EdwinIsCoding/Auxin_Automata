@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from solders.keypair import Keypair
@@ -27,7 +27,6 @@ from auxin_sdk.bridge import (
     Bridge,
     WebsocketBroadcaster,
     _ComplianceTask,
-    _PaymentTask,
 )
 from auxin_sdk.hashing import sha256_hex
 from auxin_sdk.oracle import OracleDecision, SafetyOracle
@@ -37,7 +36,6 @@ from auxin_sdk.program.client import AuxinProgramClient
 from auxin_sdk.schema import TelemetryFrame
 from auxin_sdk.sources.mock import MockSource
 from auxin_sdk.wallet import HardwareWallet
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

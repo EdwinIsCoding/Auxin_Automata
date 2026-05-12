@@ -6,15 +6,13 @@ PDF rendering: pdflatex (preferred) → weasyprint → pdfkit → HTML fallback.
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -138,6 +136,7 @@ class InvoiceGenerator:
         treasury_analysis: TreasuryAnalysis | None = None,
     ) -> Invoice:
         """Build an Invoice from payment and compliance data for the given period."""
+
         def in_period(ts: Any) -> bool:
             dt = _parse_ts(ts)
             return period_start <= dt <= period_end
@@ -176,7 +175,7 @@ class InvoiceGenerator:
 
         invoice = Invoice(
             invoice_id=str(uuid.uuid4()),
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             period_start=period_start,
             period_end=period_end,
             hardware_agent_pubkey=hardware_agent_pubkey,
@@ -229,6 +228,7 @@ class InvoiceGenerator:
         html_content = self._render_html(invoice)
         try:
             from weasyprint import HTML  # type: ignore[import]
+
             HTML(string=html_content).write_pdf(str(pdf_path))
             log.info("invoice.pdf_rendered", path=str(pdf_path), engine="weasyprint")
             return pdf_path
@@ -238,6 +238,7 @@ class InvoiceGenerator:
         # Fallback: pdfkit
         try:
             import pdfkit  # type: ignore[import]
+
             pdfkit.from_string(html_content, str(pdf_path))
             log.info("invoice.pdf_rendered", path=str(pdf_path), engine="pdfkit")
             return pdf_path
@@ -270,9 +271,9 @@ class InvoiceGenerator:
     ) -> str:
         """Render the invoice as a LaTeX document using the Jinja2 .tex.j2 template."""
         try:
-            from jinja2 import Environment, FileSystemLoader, select_autoescape  # type: ignore[import]
+            from jinja2 import Environment, FileSystemLoader  # type: ignore[import]
         except ImportError:
-            raise RuntimeError("jinja2 not installed; cannot render LaTeX template")
+            raise RuntimeError("jinja2 not installed; cannot render LaTeX template") from None
 
         env = Environment(
             loader=FileSystemLoader(str(_TEX_TEMPLATE_PATH.parent)),
@@ -305,9 +306,7 @@ class InvoiceGenerator:
 
         # ── Summary metrics ────────────────────────────────────────────────
         total_sol_str = f"{invoice.total_sol:.7f}"
-        balance_str = (
-            f"{wallet_balance_sol:.4f} SOL" if wallet_balance_sol is not None else "N/A"
-        )
+        balance_str = f"{wallet_balance_sol:.4f} SOL" if wallet_balance_sol is not None else "N/A"
 
         risk_score = invoice.risk_score_at_generation
         if risk_report:
@@ -338,34 +337,35 @@ class InvoiceGenerator:
                 or _tex_escape(pk[:24] + "...")
             )
             sol = round(data["lamports"] / LAMPORTS_PER_SOL, 7)
-            provider_rows.append({
-                "description": _tex_escape(label),
-                "count": data["count"],
-                "lamports": data["lamports"],
-                "sol": f"{sol:.7f}",
-                "wallet_short": _tex_escape(_shorten_key(pk)),
-            })
+            provider_rows.append(
+                {
+                    "description": _tex_escape(label),
+                    "count": data["count"],
+                    "lamports": data["lamports"],
+                    "sol": f"{sol:.7f}",
+                    "wallet_short": _tex_escape(_shorten_key(pk)),
+                }
+            )
 
         # ── Compliance rows ────────────────────────────────────────────────
         compliance_rows = []
         for ev in invoice.compliance_summary:
-            compliance_rows.append({
-                "ts": _tex_escape(ev.timestamp.strftime("%-d %b, %H:%M")),
-                "severity": ev.severity,
-                "sev_color": _sev_color(ev.severity),
-                "code": ev.reason_code,
-                "description": _tex_escape(_sev_description(ev.reason_code, ev.severity)),
-                "hash_short": _tex_escape(_shorten_key(ev.hash, 4, 4)),
-            })
+            compliance_rows.append(
+                {
+                    "ts": _tex_escape(ev.timestamp.strftime("%-d %b, %H:%M")),
+                    "severity": ev.severity,
+                    "sev_color": _sev_color(ev.severity),
+                    "code": ev.reason_code,
+                    "description": _tex_escape(_sev_description(ev.reason_code, ev.severity)),
+                    "hash_short": _tex_escape(_shorten_key(ev.hash, 4, 4)),
+                }
+            )
 
         # ── Treasury analysis ──────────────────────────────────────────────
         if treasury_analysis:
             burn_lamports_day = treasury_analysis.burn_rate_lamports_per_hour * 24
             burn_sol_day = burn_lamports_day / LAMPORTS_PER_SOL
-            burn_rate_str = (
-                f"{burn_lamports_day:,.0f} lamports/day "
-                f"({burn_sol_day:.4f} SOL/day)"
-            )
+            burn_rate_str = f"{burn_lamports_day:,.0f} lamports/day ({burn_sol_day:.4f} SOL/day)"
             runway_hours = treasury_analysis.runway_hours
             if runway_hours >= 24:
                 runway_str = f"{runway_hours / 24:.1f} days at current rate"
@@ -383,9 +383,7 @@ class InvoiceGenerator:
                     for a in treasury_analysis.recommended_actions[:2]
                 )
             else:
-                actions_text = (
-                    "None. Current burn rate is within sustainable parameters."
-                )
+                actions_text = "None. Current burn rate is within sustainable parameters."
         else:
             burn_rate_str = "N/A"
             runway_str = "N/A"
@@ -493,7 +491,12 @@ class InvoiceGenerator:
     def _render_html(self, invoice: Invoice) -> str:
         """Render the invoice as HTML using the Jinja2 template (fallback)."""
         try:
-            from jinja2 import Environment, FileSystemLoader, select_autoescape  # type: ignore[import]
+            from jinja2 import (  # type: ignore[import]
+                Environment,
+                FileSystemLoader,
+                select_autoescape,
+            )
+
             env = Environment(
                 loader=FileSystemLoader(str(_HTML_TEMPLATE_PATH.parent)),
                 autoescape=select_autoescape(["html"]),
@@ -564,11 +567,11 @@ def _score_to_grade(score: float) -> str:
 def _parse_ts(value: Any) -> datetime:
     """Parse a timestamp to a timezone-aware datetime."""
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, str):
         try:
             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
         except ValueError:
             pass
-    return datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return datetime(1970, 1, 1, tzinfo=UTC)

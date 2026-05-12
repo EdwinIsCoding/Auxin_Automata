@@ -157,14 +157,16 @@ class CloakProvider(PrivacyProvider):
         """
         # Serialize the wallet's 64-byte keypair for the Node.js script.
         keypair_bytes = bytes(wallet.solders_keypair)
-        input_data = json.dumps({
-            "rpc_url": self._rpc_url,
-            "wallet_secret_b64": base64.b64encode(keypair_bytes).decode(),
-            "provider_pubkey": str(provider_pubkey),
-            "amount_lamports": lamports,
-            "program_id": self._program_id,
-            "relay_url": self._relay_url,
-        })
+        input_data = json.dumps(
+            {
+                "rpc_url": self._rpc_url,
+                "wallet_secret_b64": base64.b64encode(keypair_bytes).decode(),
+                "provider_pubkey": str(provider_pubkey),
+                "amount_lamports": lamports,
+                "program_id": self._program_id,
+                "relay_url": self._relay_url,
+            }
+        )
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -182,12 +184,12 @@ class CloakProvider(PrivacyProvider):
             raise RuntimeError(
                 "Node.js not found. CloakProvider requires Node >=20 installed. "
                 "Install it or set AUXIN_PRIVACY=direct to skip Cloak."
-            )
+            ) from None
         except TimeoutError:
             raise RuntimeError(
                 f"Cloak deposit timed out after {_SUBPROCESS_TIMEOUT_S}s. "
                 "The relayer may be unreachable or ZK proof generation stalled."
-            )
+            ) from None
 
         if proc.returncode != 0:
             err_msg = stderr.decode().strip() if stderr else "unknown error"

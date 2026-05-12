@@ -33,12 +33,13 @@ Architecture rules enforced here — never relax:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -69,29 +70,36 @@ log = structlog.get_logger(__name__)
 # ── Prometheus metrics ────────────────────────────────────────────────────────
 # Defined at module level so they are singletons across the process lifetime.
 
+
 def _make_counter(name, doc, labelnames=()):
     try:
         return Counter(name, doc, labelnames)
     except ValueError:
         from prometheus_client import REGISTRY
+
         REGISTRY.unregister(REGISTRY._names_to_collectors[name])
         return Counter(name, doc, labelnames)
+
 
 def _make_histogram(name, doc, buckets):
     try:
         return Histogram(name, doc, buckets=buckets)
     except ValueError:
         from prometheus_client import REGISTRY
+
         REGISTRY.unregister(REGISTRY._names_to_collectors[name])
         return Histogram(name, doc, buckets=buckets)
+
 
 def _make_gauge(name, doc, labelnames=()):
     try:
         return Gauge(name, doc, labelnames)
     except ValueError:
         from prometheus_client import REGISTRY
+
         REGISTRY.unregister(REGISTRY._names_to_collectors[name])
         return Gauge(name, doc, labelnames)
+
 
 _TX_TOTAL = _make_counter(
     "auxin_tx_submitted_total",
@@ -121,7 +129,9 @@ _QUEUE_DEPTH = _make_gauge(
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 PAYMENT_QUEUE_MAXSIZE = 50
-PAYMENT_AMOUNT_LAMPORTS = int(os.getenv("AUXIN_PAYMENT_LAMPORTS", "5000"))  # lamports per oracle-approved action
+PAYMENT_AMOUNT_LAMPORTS = int(
+    os.getenv("AUXIN_PAYMENT_LAMPORTS", "5000")
+)  # lamports per oracle-approved action
 COMPLIANCE_SEVERITY_ANOMALY = 2  # direct anomaly-flag path
 COMPLIANCE_SEVERITY_ORACLE_DENIED = 1  # oracle denial path
 COMPLIANCE_SEVERITY_INFO = 0  # informational (session markers)
@@ -242,10 +252,8 @@ class WebsocketBroadcaster:
         # Replay sticky state to this client immediately so it doesn't have to
         # wait up to 15–30 s for the next risk_report / treasury_analysis cycle.
         for payload in self._sticky.values():
-            try:
+            with contextlib.suppress(Exception):
                 await ws.send_str(json.dumps(payload, default=str))
-            except Exception:
-                pass
         try:
             async for msg in ws:
                 # Dashboard clients are receive-only; close on any error
@@ -649,10 +657,7 @@ class Bridge:
         # Scene description — counted on every frame so the interval is wall-clock
         # accurate regardless of oracle throttling or anomaly branching below.
         self._scene_frame_counter += 1
-        if (
-            self._scene_frame_counter % SCENE_INTERVAL_FRAMES == 0
-            and not self._scene_queue.full()
-        ):
+        if self._scene_frame_counter % SCENE_INTERVAL_FRAMES == 0 and not self._scene_queue.full():
             _scene_sync = getattr(self.source, "get_frame_sync_info", lambda: None)()
             _scene_frame_idx = _scene_sync.get("frame_index") if _scene_sync else None
             await self._scene_queue.put(
@@ -761,8 +766,10 @@ class Bridge:
                 if sig:
                     _TX_TOTAL.labels(kind="compliance", status="ok").inc()
                     self._compliance_total += 1
-                    if (not self._scoring_ready.is_set()
-                            and self._compliance_total >= self._SCORING_MIN_COMPLIANCE):
+                    if (
+                        not self._scoring_ready.is_set()
+                        and self._compliance_total >= self._SCORING_MIN_COMPLIANCE
+                    ):
                         self._scoring_ready.set()
                     self._last_successful_tx = {
                         "signature": sig,
@@ -778,13 +785,15 @@ class Bridge:
                         "timestamp": task.frame.timestamp.isoformat(),
                     }
                     # Accumulate for risk scorer / invoice generator
-                    self._compliance_log.append({
-                        "timestamp": task.frame.timestamp.isoformat(),
-                        "severity": task.severity,
-                        "reason_code": task.reason_code,
-                        "hash": task.telemetry_hash,
-                        "tx_signature": sig,
-                    })
+                    self._compliance_log.append(
+                        {
+                            "timestamp": task.frame.timestamp.isoformat(),
+                            "severity": task.severity,
+                            "reason_code": task.reason_code,
+                            "hash": task.telemetry_hash,
+                            "tx_signature": sig,
+                        }
+                    )
                     await self.ws_broadcaster.broadcast(
                         {"type": "compliance_event", "data": event_data}
                     )
@@ -820,11 +829,14 @@ class Bridge:
                     )
                     if frame_arr is not None:
                         import tempfile
+
                         import cv2  # type: ignore[import-untyped]
-                        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-                        tmp.close()
-                        _tmp_image_path = Path(tmp.name)
-                        cv2.imwrite(str(_tmp_image_path), cv2.cvtColor(frame_arr, cv2.COLOR_RGB2BGR))
+
+                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as _f:
+                            _tmp_image_path = Path(_f.name)
+                        cv2.imwrite(
+                            str(_tmp_image_path), cv2.cvtColor(frame_arr, cv2.COLOR_RGB2BGR)
+                        )
                         image_path = _tmp_image_path
                         log.debug(
                             "payment_worker.real_frame",
@@ -859,8 +871,10 @@ class Bridge:
                         if result.tx_signature:
                             _TX_TOTAL.labels(kind="payment", status="ok").inc()
                             self._payments_total += 1
-                            if (not self._scoring_ready.is_set()
-                                    and self._payments_total >= self._SCORING_MIN_PAYMENTS):
+                            if (
+                                not self._scoring_ready.is_set()
+                                and self._payments_total >= self._SCORING_MIN_PAYMENTS
+                            ):
                                 self._scoring_ready.set()
                             effective_lamports = int(
                                 PAYMENT_AMOUNT_LAMPORTS * self._payment_lamport_multiplier
@@ -881,7 +895,7 @@ class Bridge:
                             # Accumulate for risk scorer / invoice (ring buffer)
                             self._payment_log.append(payment_entry)
                             if len(self._payment_log) > self._payment_log_max:
-                                self._payment_log = self._payment_log[-self._payment_log_max:]
+                                self._payment_log = self._payment_log[-self._payment_log_max :]
                             await self.ws_broadcaster.broadcast(
                                 {
                                     "type": "payment_event",
@@ -922,10 +936,8 @@ class Bridge:
             finally:
                 # Clean up temp frame file (only created for real video frames)
                 if _tmp_image_path is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         _tmp_image_path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
                 self._payment_queue.task_done()
 
     async def _scene_worker(self) -> None:
@@ -946,10 +958,11 @@ class Bridge:
                     )
                     if frame_arr is not None:
                         import tempfile
+
                         import cv2  # type: ignore[import-untyped]
-                        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-                        tmp.close()
-                        _tmp = Path(tmp.name)
+
+                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as _f:
+                            _tmp = Path(_f.name)
                         cv2.imwrite(str(_tmp), cv2.cvtColor(frame_arr, cv2.COLOR_RGB2BGR))
                         image_path = _tmp
                     else:
@@ -960,13 +973,12 @@ class Bridge:
                     _tmp = None
 
                 from .oracle import SceneDescription
+
                 desc: SceneDescription = await self.oracle.describe_scene(image_path)
 
                 if _tmp is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         _tmp.unlink()
-                    except Exception:
-                        pass
 
                 self._last_scene = {
                     "objects": desc.objects,
@@ -1012,8 +1024,11 @@ class Bridge:
         """
         log.info("risk_scoring_worker.started", interval_s=_RISK_INTERVAL_S)
         await self._scoring_ready.wait()
-        log.info("risk_scoring_worker.first_run_triggered",
-                 payments=self._payments_total, compliance=self._compliance_total)
+        log.info(
+            "risk_scoring_worker.first_run_triggered",
+            payments=self._payments_total,
+            compliance=self._compliance_total,
+        )
         while True:
             try:
                 balance_sol = await self._get_balance_sol()
@@ -1051,8 +1066,11 @@ class Bridge:
         """
         log.info("treasury_worker.started", interval_s=_TREASURY_INTERVAL_S)
         await self._scoring_ready.wait()
-        log.info("treasury_worker.first_run_triggered",
-                 payments=self._payments_total, compliance=self._compliance_total)
+        log.info(
+            "treasury_worker.first_run_triggered",
+            payments=self._payments_total,
+            compliance=self._compliance_total,
+        )
         while True:
             try:
                 if self._treasury_agent is None:
@@ -1141,7 +1159,7 @@ class Bridge:
         while True:
             try:
                 await asyncio.sleep(interval_s)
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 period_start = now - timedelta(hours=_INVOICE_INTERVAL_H)
 
                 invoice = await self._invoice_generator.generate(

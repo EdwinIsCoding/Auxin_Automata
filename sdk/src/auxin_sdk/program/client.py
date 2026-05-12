@@ -46,7 +46,6 @@ from __future__ import annotations
 import hashlib
 import json
 import struct
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -63,10 +62,10 @@ from solders.signature import Signature
 from solders.system_program import ID as SYS_PROGRAM_ID
 from solders.transaction import VersionedTransaction
 
+from auxin_sdk.wallet import HardwareWallet
+
 # Solana well-known sysvars
 SYSVAR_CLOCK_PUBKEY = Pubkey.from_string("SysvarC1ock11111111111111111111111111111111")
-
-from auxin_sdk.wallet import HardwareWallet
 
 log = structlog.get_logger(__name__)
 
@@ -409,9 +408,7 @@ class AuxinProgramClient:
                         AccountMeta(pubkey=agent_pda, is_signer=False, is_writable=False),
                         AccountMeta(pubkey=hw_wallet.pubkey, is_signer=True, is_writable=True),
                         # Clock sysvar — read by the program for slot-based PDA seed
-                        AccountMeta(
-                            pubkey=SYSVAR_CLOCK_PUBKEY, is_signer=False, is_writable=False
-                        ),
+                        AccountMeta(pubkey=SYSVAR_CLOCK_PUBKEY, is_signer=False, is_writable=False),
                         AccountMeta(pubkey=log_pda, is_signer=False, is_writable=True),
                         AccountMeta(pubkey=SYS_PROGRAM_ID, is_signer=False, is_writable=False),
                     ],

@@ -28,12 +28,12 @@ _SDK_ROOT = Path(__file__).parent.parent.parent
 
 @dataclass(frozen=True)
 class ClusterConfig:
-    cluster: str                  # "devnet" | "mainnet"
-    rpc_url: str                  # HTTP RPC endpoint
-    program_id: str               # deployed program public key (base-58)
-    hardware_keypair_path: str    # path to hardware wallet JSON
-    provider_pubkey: str          # whitelisted provider public key (base-58, may be empty)
-    explorer_base_url: str        # https://explorer.solana.com
+    cluster: str  # "devnet" | "mainnet"
+    rpc_url: str  # HTTP RPC endpoint
+    program_id: str  # deployed program public key (base-58)
+    hardware_keypair_path: str  # path to hardware wallet JSON
+    provider_pubkey: str  # whitelisted provider public key (base-58, may be empty)
+    explorer_base_url: str  # https://explorer.solana.com
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -84,12 +84,16 @@ def get_cluster_config() -> ClusterConfig:
     if cluster == "devnet":
         rpc_url = _get("HELIUS_RPC_URL") or _get("SOLANA_RPC_URL", "https://api.devnet.solana.com")
         program_id = _get("PROGRAM_ID", DEVNET_PROGRAM_ID)
-        hw_path = _get("HARDWARE_KEYPAIR_PATH") or _get("HW_KEYPAIR_PATH", "~/.config/auxin/hardware_devnet.json")
+        hw_path = _get("HARDWARE_KEYPAIR_PATH") or _get(
+            "HW_KEYPAIR_PATH", "~/.config/auxin/hardware_devnet.json"
+        )
         provider_pubkey = _get("PROVIDER_PUBKEY", "")
     else:
         rpc_url = _get("HELIUS_RPC_URL") or _get("SOLANA_RPC_URL", "")
         program_id = _get("PROGRAM_ID", "")
-        hw_path = _get("HARDWARE_KEYPAIR_PATH") or _get("HW_KEYPAIR_PATH", "~/.config/auxin/hardware_mainnet.json")
+        hw_path = _get("HARDWARE_KEYPAIR_PATH") or _get(
+            "HW_KEYPAIR_PATH", "~/.config/auxin/hardware_mainnet.json"
+        )
         provider_pubkey = _get("PROVIDER_PUBKEY", "")
 
     return ClusterConfig(

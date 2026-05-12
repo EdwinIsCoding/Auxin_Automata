@@ -48,7 +48,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import time
 from typing import Any
 
 import httpx
@@ -271,9 +270,7 @@ class MagicBlockProvider(PrivacyProvider):
             async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
                 resp = await client.post(url, json=body, headers=headers)
         except httpx.RequestError as exc:
-            raise RuntimeError(
-                f"MagicBlock API unreachable at {url}: {exc}"
-            ) from exc
+            raise RuntimeError(f"MagicBlock API unreachable at {url}: {exc}") from exc
 
         if resp.status_code >= 400:
             # AML rejection comes as 400 with a JSON body explaining why
@@ -281,9 +278,7 @@ class MagicBlockProvider(PrivacyProvider):
                 detail = resp.json()
             except Exception:
                 detail = resp.text
-            raise RuntimeError(
-                f"MagicBlock API error {resp.status_code}: {detail}"
-            )
+            raise RuntimeError(f"MagicBlock API error {resp.status_code}: {detail}")
 
         return resp.json()
 
@@ -314,8 +309,7 @@ class MagicBlockProvider(PrivacyProvider):
                 )
             except TimeoutError as exc:
                 raise RuntimeError(
-                    f"MagicBlock transaction submission timed out after "
-                    f"{_CONFIRM_TIMEOUT_S}s"
+                    f"MagicBlock transaction submission timed out after {_CONFIRM_TIMEOUT_S}s"
                 ) from exc
 
         sig = str(resp.value)
@@ -358,6 +352,4 @@ def _sign_transaction_bytes(tx_bytes: bytes, wallet: HardwareWallet) -> bytes:
         tx.sign([keypair])
         return tx.serialize()
     except Exception as exc:
-        raise RuntimeError(
-            f"Failed to deserialize MagicBlock transaction: {exc}"
-        ) from exc
+        raise RuntimeError(f"Failed to deserialize MagicBlock transaction: {exc}") from exc

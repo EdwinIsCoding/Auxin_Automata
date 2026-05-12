@@ -17,11 +17,8 @@ import json
 import time
 from pathlib import Path
 
-import pytest
-
-from auxin_sdk.sources.recorded import RecordedSource
 from auxin_sdk.schema import TelemetryFrame
-
+from auxin_sdk.sources.recorded import RecordedSource
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -88,10 +85,12 @@ def _make_episode_dir(tmp_path: Path, num_frames: int = 10) -> Path:
     # session_metadata.json
     meta_path = episode_dir / "session_metadata.json"
     meta_path.write_text(
-        json.dumps({
-            "recording_id": "test_episode",
-            "config": {"zed": {"fps": 30}, "robot": {}},
-        }),
+        json.dumps(
+            {
+                "recording_id": "test_episode",
+                "config": {"zed": {"fps": 30}, "robot": {}},
+            }
+        ),
         encoding="utf-8",
     )
 

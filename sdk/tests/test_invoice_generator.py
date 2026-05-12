@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -14,7 +13,7 @@ from auxin_sdk.invoicing.types import Invoice
 
 
 def _make_payments(n: int = 10) -> list[dict]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     providers = ["ProviderA", "ProviderB"]
     return [
         {
@@ -30,7 +29,7 @@ def _make_payments(n: int = 10) -> list[dict]:
 
 
 def _make_compliance(n: int = 3) -> list[dict]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     severities = [0, 1, 2]
     return [
         {
@@ -50,7 +49,7 @@ class TestInvoiceGeneration:
         gen = InvoiceGenerator(output_dir=tempfile.mkdtemp())
         payments = _make_payments(10)
         compliance = _make_compliance(3)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         invoice = await gen.generate(
             payment_history=payments,
             compliance_history=compliance,
@@ -70,10 +69,8 @@ class TestInvoiceGeneration:
     async def test_provider_grouping(self):
         gen = InvoiceGenerator(output_dir=tempfile.mkdtemp())
         payments = _make_payments(10)
-        now = datetime.now(timezone.utc)
-        invoice = await gen.generate(
-            payments, [], now - timedelta(days=7), now, "pub"
-        )
+        now = datetime.now(UTC)
+        invoice = await gen.generate(payments, [], now - timedelta(days=7), now, "pub")
         providers = {item.provider_pubkey for item in invoice.line_items}
         assert providers == {"ProviderA", "ProviderB"}
 
@@ -81,10 +78,8 @@ class TestInvoiceGeneration:
     async def test_compliance_events_included(self):
         gen = InvoiceGenerator(output_dir=tempfile.mkdtemp())
         compliance = _make_compliance(5)
-        now = datetime.now(timezone.utc)
-        invoice = await gen.generate(
-            [], compliance, now - timedelta(days=7), now, "pub"
-        )
+        now = datetime.now(UTC)
+        invoice = await gen.generate([], compliance, now - timedelta(days=7), now, "pub")
         assert len(invoice.compliance_summary) == 5
         assert invoice.total_transactions == 0
         assert invoice.total_compliance_events == 5
@@ -92,14 +87,16 @@ class TestInvoiceGeneration:
     @pytest.mark.asyncio
     async def test_period_filtering(self):
         """Payments outside the billing period must be excluded."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         period_start = now - timedelta(days=3)
         period_end = now + timedelta(seconds=5)  # small buffer to include immediate payments
 
         # Use the same `now` so timestamps are deterministic relative to period
         recent_payments = [
             {
-                "timestamp": (now - timedelta(hours=i + 1)).isoformat(),  # 1h–10h ago, all in window
+                "timestamp": (
+                    now - timedelta(hours=i + 1)
+                ).isoformat(),  # 1h–10h ago, all in window
                 "lamports": 5000 + i * 100,
                 "provider": ["ProviderA", "ProviderB"][i % 2],
                 "tx_signature": f"paytx{i:04d}" + "0" * 44,
@@ -130,7 +127,7 @@ class TestInvoiceGeneration:
         from auxin_sdk.risk.types import RiskBreakdown, RiskReport
 
         gen = InvoiceGenerator(output_dir=tempfile.mkdtemp())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         risk = RiskReport(
             overall_score=82.5,
             grade="A",
@@ -148,8 +145,10 @@ class TestJsonExport:
     async def test_json_file_created(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             gen = InvoiceGenerator(output_dir=tmpdir)
-            now = datetime.now(timezone.utc)
-            invoice = await gen.generate(_make_payments(5), [], now - timedelta(days=1), now + timedelta(seconds=5), "pub")
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(5), [], now - timedelta(days=1), now + timedelta(seconds=5), "pub"
+            )
             json_path = gen.render_json(invoice)
             assert json_path.exists()
             assert json_path.stat().st_size > 0
@@ -158,8 +157,14 @@ class TestJsonExport:
     async def test_json_matches_invoice_model(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             gen = InvoiceGenerator(output_dir=tmpdir)
-            now = datetime.now(timezone.utc)
-            invoice = await gen.generate(_make_payments(5), _make_compliance(2), now - timedelta(days=1), now + timedelta(seconds=5), "pub")
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(5),
+                _make_compliance(2),
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
             json_path = gen.render_json(invoice)
             parsed = json.loads(json_path.read_text())
             assert parsed["invoice_id"] == invoice.invoice_id
@@ -173,8 +178,14 @@ class TestPdfExport:
         """PDF (or fallback HTML bytes) must exist and be > 0 bytes."""
         with tempfile.TemporaryDirectory() as tmpdir:
             gen = InvoiceGenerator(output_dir=tmpdir)
-            now = datetime.now(timezone.utc)
-            invoice = await gen.generate(_make_payments(5), _make_compliance(2), now - timedelta(days=1), now + timedelta(seconds=5), "pub")
+            now = datetime.now(UTC)
+            invoice = await gen.generate(
+                _make_payments(5),
+                _make_compliance(2),
+                now - timedelta(days=1),
+                now + timedelta(seconds=5),
+                "pub",
+            )
             pdf_path = gen.render_pdf(invoice)
             assert pdf_path.exists()
             assert pdf_path.stat().st_size > 0

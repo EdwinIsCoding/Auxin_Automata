@@ -145,20 +145,14 @@ class SafetyOracle:
         prompt_file: Path | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
-        self._model_name = (
-            model
-            or os.environ.get("GEMINI_MODEL")
-            or "gemini-2.5-flash"
-        )
+        self._model_name = model or os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
         self._timeout_s = timeout_s
         self._torque_threshold = torque_threshold
         resolved_prompt = prompt_file or _PROMPT_FILE
         self._prompt_text = resolved_prompt.read_text(encoding="utf-8")
         _scene_prompt_file = Path(__file__).parent / "prompts" / "scene_description_v1.txt"
         self._scene_prompt_text = (
-            _scene_prompt_file.read_text(encoding="utf-8")
-            if _scene_prompt_file.exists()
-            else ""
+            _scene_prompt_file.read_text(encoding="utf-8") if _scene_prompt_file.exists() else ""
         )
         self._genai_model: object | None = _model  # None → lazy-init on first check()
 
@@ -230,9 +224,7 @@ class SafetyOracle:
         )
         return decision
 
-    async def describe_scene(
-        self, image_path: Path
-    ) -> "SceneDescription":
+    async def describe_scene(self, image_path: Path) -> SceneDescription:
         """
         Ask Gemini what objects are visible in the workspace frame.
 
@@ -253,9 +245,7 @@ class SafetyOracle:
                 used_fallback=True,
             )
 
-        used_fallback = False
         try:
-            from google import genai
             from google.genai import types
 
             image_bytes = Path(image_path).read_bytes()
@@ -293,7 +283,6 @@ class SafetyOracle:
             )
         except Exception as exc:
             log.warning("oracle.scene_error", error=str(exc))
-            used_fallback = True
 
         latency_ms = round((time.perf_counter() - start) * 1000, 2)
         return SceneDescription(
@@ -353,7 +342,6 @@ class SafetyOracle:
         image_path: Path,
     ) -> dict:
         """Single Gemini API call using google-genai SDK.  Returns parsed dict."""
-        from google import genai
         from google.genai import types
 
         image_bytes = Path(image_path).read_bytes()

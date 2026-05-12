@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from auxin_sdk.risk.scorer import calculate_risk_score
 from auxin_sdk.risk.types import RiskReport
@@ -34,7 +32,7 @@ class TestHealthyWallet:
     """200 payments over 7 days, 2 sev-0 compliance events, 3 providers, 1.5 SOL balance."""
 
     def _build(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         providers = ["ProvA", "ProvB", "ProvC"]
         payments = []
         for i in range(200):
@@ -73,10 +71,11 @@ class TestStressedWallet:
 
     def _build(self):
         import random
+
         rng = random.Random(42)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payments = []
-        for i in range(50):
+        for _ in range(50):
             # Erratic: random intervals 0-4h within last 2 days
             offset = rng.uniform(0, 48)
             ts = now - timedelta(hours=offset)
@@ -104,7 +103,7 @@ class TestRecoveringWallet:
     """Was stressed 5 days ago, last 3 days are clean with regular payments."""
 
     def _build(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payments = []
         # Days 4-7 ago: sparse, single provider
         for i in range(10):
@@ -128,7 +127,9 @@ class TestRecoveringWallet:
         payments, compliance = self._build()
         report = calculate_risk_score(payments, compliance, balance=0.8, tx_count=70)
         # Should be stable or improving — not declining
-        assert report.trend in ("improving", "stable"), f"Expected improving/stable, got {report.trend}"
+        assert report.trend in ("improving", "stable"), (
+            f"Expected improving/stable, got {report.trend}"
+        )
 
     def test_score_in_recovery_range(self):
         payments, compliance = self._build()
@@ -160,7 +161,7 @@ class TestScorerProperties:
     """Determinism and bounds."""
 
     def test_deterministic(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payments = [_make_payment(now - timedelta(hours=i), 5000, "ProvA") for i in range(20)]
         compliance = [_make_compliance(now - timedelta(hours=1), 1)]
         r1 = calculate_risk_score(payments, compliance, 1.0, 20)
@@ -170,13 +171,13 @@ class TestScorerProperties:
         assert r1.trend == r2.trend
 
     def test_score_in_range(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payments = [_make_payment(now - timedelta(hours=i * 2), 5000, "ProvA") for i in range(50)]
         report = calculate_risk_score(payments, [], 2.0, 50)
         assert 0.0 <= report.overall_score <= 100.0
 
     def test_breakdown_weights_sum_to_1(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payments = [_make_payment(now - timedelta(hours=i), 5000, "ProvA") for i in range(10)]
         report = calculate_risk_score(payments, [], 1.0, 10)
         total_weight = sum(bd.weight for bd in report.breakdown)
