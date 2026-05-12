@@ -110,6 +110,7 @@ scripts/seed_machine_treasury.ts
 
 # ── Episode data (large recording files — not tracked in repo) ───────────────
 data/
+data_demo/
 *.zip
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
